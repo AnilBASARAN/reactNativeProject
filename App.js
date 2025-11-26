@@ -21,23 +21,35 @@ export default function App() {
     setSelectedTable(null);
   }
 
-  function addOrderHandler(enteredOrderText) {
-    if (!selectedTable) {
-      return;
-    }
-
-    setOrders((currentOrders) => [
-      ...currentOrders,
-      {
-        id: Math.random().toString(),
-        tableId: selectedTable,
-        text: enteredOrderText, // e.g. "2x Burger, 1x Cola"
-        status: "PENDİNG",
-      },
-    ]);
-
-    endAddOrderHandler();
+function addOrderHandler(selectedItems) {
+  if (!selectedTable) {
+    return;
   }
+
+  // Filter out items with quantity 0
+  const nonEmptyItems = selectedItems.filter(
+    (item) => item.quantity && item.quantity > 0
+  );
+
+  if (nonEmptyItems.length === 0) {
+    // nothing selected, just close modal
+    endAddOrderHandler();
+    return;
+  }
+
+  setOrders((currentOrders) => [
+    ...currentOrders,
+    {
+      id: Math.random().toString(),
+      tableId: selectedTable,
+      items: nonEmptyItems, // 👈 structured items instead of text
+      status: 'PENDING',
+    },
+  ]);
+
+  endAddOrderHandler();
+}
+
 
   function deleteOrderHandler(id) {
     // For now: deleting = order is done/served
@@ -60,6 +72,17 @@ function markOrderServed(id) {
     currentOrders.filter((order) => order.id !== id)
   );
 }
+
+function formatOrderText(order) {
+  if (!order.items || order.items.length === 0) {
+    return 'Empty order';
+  }
+
+  return order.items
+    .map((item) => `${item.quantity}x ${item.name}`)
+    .join(', ');
+}
+
 
 
   return (
@@ -116,7 +139,7 @@ function markOrderServed(id) {
                 return (
                   <GoalItem
                     id={order.id}
-                    text={`Table ${order.tableId}: ${order.text}`}
+                    text={`Table ${order.tableId}: ${formatOrderText(order)} [${order.status}]`}
                     onDelete={deleteOrderHandler}
                   />
                 );
@@ -140,7 +163,7 @@ function markOrderServed(id) {
     return (
       <GoalItem
         id={order.id}
-        text={`Table ${order.tableId}: ${order.text} [${order.status}]`}
+        text={`Table ${order.tableId}: ${formatOrderText(order)} [${order.status}]`}
         onDelete={markOrderReady}   // 👈 kitchen = mark ready
       />
     );

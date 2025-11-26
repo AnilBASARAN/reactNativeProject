@@ -1,91 +1,125 @@
-import { View, Button, TextInput, StyleSheet, Modal,Image } from "react-native";
-import { useState } from "react";
+import { useState } from 'react';
+import {
+  View,
+  Text,
+  Button,
+  StyleSheet,
+  Modal,
+} from 'react-native';
 
-function GoalInput({ onAddGoal,visible,onCancel }) {
-  const [enteredGoalText, setEnteredGoalText] = useState("");
+const MENU_ITEMS = [
+  { id: 'burger', name: 'Burger' },
+  { id: 'pizza', name: 'Pizza' },
+  { id: 'cola', name: 'Cola' },
+];
 
-  function goalInputHandler(enteredText) {
-    setEnteredGoalText(enteredText);
+function GoalInput(props) {
+  // We store quantity per menu item
+  const [items, setItems] = useState(
+    MENU_ITEMS.map((item) => ({ ...item, quantity: 0 }))
+  );
+
+  function increaseQuantity(itemId) {
+    setItems((currentItems) =>
+      currentItems.map((item) =>
+        item.id === itemId
+          ? { ...item, quantity: (item.quantity || 0) + 1 }
+          : item
+      )
+    );
   }
 
-  function resetInput() {
-    setEnteredGoalText("");
+  function decreaseQuantity(itemId) {
+    setItems((currentItems) =>
+      currentItems.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              quantity: item.quantity > 0 ? item.quantity - 1 : 0,
+            }
+          : item
+      )
+    );
   }
 
-  function addGoalHandler() {
-    onAddGoal(enteredGoalText);
-    resetInput();
+  function submitHandler() {
+    props.onAddGoal(items);
+    // reset for next time
+    setItems(MENU_ITEMS.map((item) => ({ ...item, quantity: 0 })));
+  }
+
+  function cancelHandler() {
+    // reset when cancelling as well
+    setItems(MENU_ITEMS.map((item) => ({ ...item, quantity: 0 })));
+    props.onCancel();
   }
 
   return (
-   <Modal visible={visible} animationType="slide" >
-     <View style={styles.inputContainer}>
-      <Image style={styles.image} source={require("../assets/goal.png")} />
-      <TextInput
-        value={enteredGoalText}
-        onChangeText={goalInputHandler}
-        style={styles.textInput}
-        placeholder="Your course Goal!"
-      />
-      <View style={styles.buttonContainer}>
-        <View style={styles.button} >
-          <Button
-          color="#b180f0"
-        onPress={addGoalHandler}
-        title="Add Goal"
-      />
-        </View>
-        <View style={styles.button} >
-          <Button
-          color="#f31282"
-          title="Cancel"
-          onPress={onCancel}
-           />
+    <Modal visible={props.visible} animationType="slide">
+      <View style={styles.inputContainer}>
+        <Text style={styles.title}>Select Items for Order</Text>
+
+        {items.map((item) => (
+          <View key={item.id} style={styles.menuRow}>
+            <Text style={styles.menuItemText}>
+              {item.name} ({item.quantity})
+            </Text>
+            <View style={styles.buttonsRow}>
+              <Button title="-" onPress={() => decreaseQuantity(item.id)} />
+              <View style={styles.space} />
+              <Button title="+" onPress={() => increaseQuantity(item.id)} />
+            </View>
+          </View>
+        ))}
+
+        <View style={styles.actionsRow}>
+          <Button title="Cancel" color="#f31282" onPress={cancelHandler} />
+          <Button title="Add Order" color="#5e0acc" onPress={submitHandler} />
         </View>
       </View>
-    </View>
-   </Modal>
+    </Modal>
   );
 }
 
+export default GoalInput;
+
 const styles = StyleSheet.create({
   inputContainer: {
-    backgroundColor:"#311b6b",
-    padding:16,
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    backgroundColor: '#311b6b',
+    padding: 16,
+    justifyContent: 'center',
+  },
+  title: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  menuRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: "#cccccc",
-    marginBottom:-1,
+    borderBottomColor: '#cccccc',
   },
-  image:{
-    width:100,
-    height:100,
-    margin:20
+  menuItemText: {
+    color: 'white',
+    fontSize: 16,
   },
-  buttonContainer:{
-    marginTop:16,
-    flexDirection:"row",
+  buttonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  button:{
-    width:"20%",
-    marginHorizontal:8,
-    paddingHorizontal:20,
-    borderWidth:1,
-    backgroundColor:"white",
-    borderRadius:5
-
+  space: {
+    width: 8,
   },
-  textInput: {
-    borderWidth: 1,
-    borderColor: "#e4d0ff",
-    borderRadius:6,
-    width: "100%",
-    padding: 8,
-    backgroundColor:"#e4d0ff",
-    color:"#120438",
+  actionsRow: {
+    marginTop: 24,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
 });
-
-export default GoalInput;
