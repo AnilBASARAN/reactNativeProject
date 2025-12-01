@@ -1,32 +1,49 @@
-import { StyleSheet, Text, View, Button, Pressable } from "react-native";
+import { StyleSheet, Text, View, Button, Pressable, Modal } from "react-native";
+import { useState } from "react";
 
-function GoalItem({ text, id, status, onReady, onServe }) {
+function GoalItem({ text, id, onDelete, note }) {
+  const [noteVisible, setNoteVisible] = useState(false);
+
   return (
-    <Pressable
-      style={({ pressed }) => pressed && styles.pressedItem}
-    >
-      <View style={styles.goalContainer}>
-        <Text style={styles.goalStyles}>{text}</Text>
+    <>
+      <Pressable
+        style={({ pressed }) => pressed && styles.pressedItem}
+      >
+        <View style={styles.goalContainer}>
+          
+          <Text style={styles.goalStyles}>{text}</Text>
 
-        {/* If order is PENDING, show a READY button */}
-        {status === "PENDING" && (
-          <View style={styles.buttonWrapper}>
+          {note && (
             <Button
-              title="Ready"
-              onPress={() => onReady(id)}
+              title="Notu Gör"
+              color="#2980b9"
+              onPress={() => setNoteVisible(true)}
             />
-          </View>
-        )}
+          )}
 
-        {/* Always show the X button = served / remove */}
-        <View style={styles.buttonWrapper}>
           <Button
-            title="X"
-            onPress={() => onServe(id)}
+            onPress={() => onDelete(id)}
+            title="Ready"
+            color="#27ae60"
           />
         </View>
-      </View>
-    </Pressable>
+      </Pressable>
+
+      {/* NOTE MODAL */}
+      <Modal
+        visible={noteVisible}
+        transparent
+        animationType="fade"
+      >
+        <View style={styles.noteModal}>
+          <View style={styles.noteBox}>
+            <Text style={styles.noteTitle}>Sipariş Notu</Text>
+            <Text style={styles.noteText}>{note}</Text>
+            <Button title="Kapat" onPress={() => setNoteVisible(false)} />
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -39,17 +56,42 @@ const styles = StyleSheet.create({
     color: "white",
     borderRadius: 6,
     backgroundColor: "#5e0acc",
-    width: "70%",
+    width: "65%",
   },
+
   pressedItem: {
     opacity: 0.5,
   },
+
   goalContainer: {
     margin: 1,
     flexDirection: "row",
     alignItems: "center",
+    gap: 6,
   },
-  buttonWrapper: {
-    marginLeft: 4,
+
+  noteModal: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  noteBox: {
+    width: "80%",
+    backgroundColor: "white",
+    borderRadius: 16,
+    padding: 20,
+  },
+
+  noteTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 12,
+  },
+
+  noteText: {
+    fontSize: 14,
+    marginBottom: 20,
   },
 });

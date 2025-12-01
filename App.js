@@ -4,6 +4,7 @@ import {
   StyleSheet,
   FlatList,
   Button,
+  TextInput,
   Text,
   Pressable,
   Image,
@@ -68,6 +69,15 @@ const PRODUCT_IMAGES = {
   'trilece': require('./assets/trilece.jpg'),
 };
 
+const DRINK_OPTIONS = [
+  { id: 'none', label: 'İçecek Yok', image: require('./assets/no-drink.jpg') },
+  { id: 'coke', label: 'Coca Cola', image: require('./assets/drink-coke.jpg') },
+  { id: 'fanta', label: 'Fanta', image: require('./assets/drink-fanta.jpg') },
+  { id: 'ayran', label: 'Ayran', image: require('./assets/drink-ayran.jpg') },
+];
+
+
+const ONION_IMAGE = require('./assets/onion.jpg');
 
 
 export default function App() {
@@ -76,6 +86,18 @@ export default function App() {
   const [mode, setMode] = useState('WAITER'); // 'WAITER' | 'KITCHEN'
   const [basket, setBasket] = useState([]); // current order being built
   const [selectedCategory, setSelectedCategory] = useState('POPULAR');
+  const [customModalVisible, setCustomModalVisible] = useState(false);
+const [customProduct, setCustomProduct] = useState(null);
+
+const [selectedDrink, setSelectedDrink] = useState(null);
+const [withOnion, setWithOnion] = useState(null);
+const [quantity, setQuantity] = useState(1);
+
+const [validationModalVisible, setValidationModalVisible] = useState(false);
+const [validationMessage, setValidationMessage] = useState("");
+
+const [noteText, setNoteText] = useState("");
+
 
 
   // ---------- BASKET & ORDER LOGIC ----------
@@ -96,17 +118,24 @@ export default function App() {
 });
 
 
-  function addItemToBasket(item) {
-    setBasket((current) => {
-      const existing = current.find((i) => i.id === item.id);
-      if (existing) {
-        return current.map((i) =>
-          i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
-        );
-      }
-      return [...current, { ...item, quantity: 1 }];
-    });
-  }
+function addItemToBasket(item) {
+  const qtyToAdd = item.quantity ?? 1; // default 1 if not provided
+
+  setBasket((current) => {
+    const existing = current.find((i) => i.id === item.id);
+
+    if (existing) {
+      return current.map((i) =>
+        i.id === item.id
+          ? { ...i, quantity: i.quantity + qtyToAdd }
+          : i
+      );
+    }
+
+    return [...current, { ...item, quantity: qtyToAdd }];
+  });
+}
+
 
   function clearBasket() {
     setBasket([]);
@@ -163,6 +192,52 @@ export default function App() {
       currentOrders.filter((order) => order.id !== id)
     );
   }
+  function handleProductPress(item) {
+  // Products that need customization
+  const needsDrink = ['kofte-ekmek', 'hamburger'].includes(item.id);
+  const needsOnion = item.id === 'kofte-ekmek';
+
+  if (needsDrink || needsOnion) {
+    setCustomProduct(item);
+    setSelectedDrink(null);   // reset
+    setWithOnion(null);
+    setCustomModalVisible(true);
+  } else {
+    // Items without customization go directly
+    addItemToBasket(item);
+  }
+}
+
+function handleCustomizationComplete() {
+  // ONION must be selected for köfte ekmek
+  if (customProduct.id === 'kofte-ekmek' && withOnion === null) {
+    setValidationMessage("Lütfen soğan seçimi yapınız.");
+    setValidationModalVisible(true);
+    return;
+  }
+
+  // DRINK must be selected (including 'none'):
+  if ((customProduct.id === 'kofte-ekmek' || customProduct.id === 'hamburger')
+      && selectedDrink === null) {
+    setValidationMessage("Lütfen içecek seçiniz.");
+    setValidationModalVisible(true);
+    return;
+  }
+
+  // Build product with options
+  addItemToBasket({
+    ...customProduct,
+    drink: selectedDrink,
+    onion: withOnion,
+    quantity: quantity,
+    note: noteText,
+  });
+
+  setCustomModalVisible(false);
+}
+
+
+
 
   function formatOrderText(order) {
     if (!order.items || order.items.length === 0) {
@@ -266,7 +341,8 @@ export default function App() {
                 renderItem={({ item }) => (
                <Pressable
   style={styles.productCard}
-  onPress={() => addItemToBasket(item)}
+  onPress={() => handleProductPress(item)}
+
 >
   <Image
     source={PRODUCT_IMAGES[item.id]}
@@ -283,6 +359,152 @@ export default function App() {
               />
             </View>
           </View>
+
+{customModalVisible && customProduct && (
+  <View style={styles.customModal}>
+    {/* Top product area */}
+<View style={styles.customTopRow}>
+  <Text style={styles.customTitle}>{customProduct.name}</Text>
+  <Text style={styles.customPrice}>TL {customProduct.price.toFixed(2)}</Text>
+
+  <Image
+    source={PRODUCT_IMAGES[customProduct.id]}
+    style={styles.customProductImage}
+    resizeMode="cover"
+  />
+</View>
+
+
+    {/* QUANTITY ROW */}
+    <View style={styles.quantityRow}>
+      <Pressable
+        style={styles.qtyButton}
+        onPress={() => setQuantity((q) => Math.max(1, q - 1))}
+      >
+        <Text style={styles.qtyButtonText}>-</Text>
+      </Pressable>
+
+      <Text style={styles.qtyText}>{quantity}</Text>
+
+      <Pressable
+        style={styles.qtyButton}
+        onPress={() => setQuantity((q) => q + 1)}
+      >
+        <Text style={styles.qtyButtonText}>+</Text>
+      </Pressable>
+    </View>
+
+    {/* ONION SECTION – only for köfte ekmek */}
+    {customProduct.id === 'kofte-ekmek' && (
+      <>
+        <Text style={styles.optionTitle}>Soğan Dilimi</Text>
+        <Text style={styles.optionSubtitle}>Lütfen seçiminizi yapınız</Text>
+
+        <View style={styles.onionRow}>
+          {/* With onion */}
+          <Pressable
+            style={[
+              styles.onionOption,
+              withOnion === true && styles.optionSelectedBorder,
+            ]}
+            onPress={() => setWithOnion(true)}
+          >
+            <Image
+              source={ONION_IMAGE}
+              style={styles.optionImage}
+              resizeMode="cover"
+            />
+            <View style={styles.optionBadge}>
+              <Text style={styles.optionBadgeText}>✓</Text>
+            </View>
+            <Text style={styles.onionLabel}>Soğanlı</Text>
+          </Pressable>
+
+          {/* Without onion */}
+          <Pressable
+            style={[
+              styles.onionOption,
+              withOnion === false && styles.optionSelectedBorder,
+            ]}
+            onPress={() => setWithOnion(false)}
+          >
+            <Image
+              source={ONION_IMAGE}
+              style={[styles.optionImage, styles.optionImageDisabled]}
+              resizeMode="cover"
+            />
+            <View style={[styles.optionBadge, styles.optionBadgeCancel]}>
+              <Text style={styles.optionBadgeText}>✕</Text>
+            </View>
+            <Text style={styles.onionLabel}>Soğansız</Text>
+          </Pressable>
+        </View>
+      </>
+    )}
+
+    {/* DRINK SECTION – for köfte ekmek and hamburger */}
+    {(customProduct.id === 'kofte-ekmek' ||
+      customProduct.id === 'hamburger') && (
+      <>
+        <Text style={styles.optionTitle}>Seçiniz</Text>
+        <Text style={styles.optionSubtitle}>
+          Bir seçenek seçmek zorunludur (İçecek Yok dahil)
+        </Text>
+
+        <View style={styles.drinkRow}>
+          {DRINK_OPTIONS.map((drink) => {
+            const selected = selectedDrink === drink.id;
+            return (
+              <Pressable
+                key={drink.id}
+                style={[
+                  styles.drinkOption,
+                  selected && styles.optionSelectedBorder,
+                ]}
+                onPress={() => setSelectedDrink(drink.id)}
+              >
+                <Image
+                  source={drink.image}
+                  style={styles.drinkImage}
+                  resizeMode="cover"
+                />
+                {selected && (
+                  <View style={styles.optionBadge}>
+                    <Text style={styles.optionBadgeText}>✓</Text>
+                  </View>
+                )}
+                <Text style={styles.drinkLabel}>{drink.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </>
+    )}
+
+    {/* NOTE */}
+    <Text style={styles.optionTitle}>Ek Not</Text>
+    <TextInput
+      style={styles.noteInput}
+      placeholder="Örn: Ekmeği az kızartın, acısız olsun..."
+      placeholderTextColor="#aaa"
+      multiline
+      value={noteText}
+      onChangeText={setNoteText}
+    />
+
+    {/* Buttons */}
+    <View style={styles.modalButtons}>
+      <Button title="İptal" onPress={() => setCustomModalVisible(false)} />
+      <Button
+        title="Sepete Ekle"
+        color="#27ae60"
+        onPress={handleCustomizationComplete}
+      />
+    </View>
+  </View>
+)}
+
+
 
           {/* Bottom "Siparişim" bar */}
           <View style={styles.cartBar}>
@@ -319,11 +541,13 @@ export default function App() {
             renderItem={(itemData) => {
               const order = itemData.item;
               return (
-                <GoalItem
-                  id={order.id}
-                  text={`Table ${order.tableId}: ${formatOrderText(order)} [${order.status}]`}
-                  onDelete={markOrderReady} // kitchen tap = mark ready
-                />
+           <GoalItem
+  id={order.id}
+  text={`Masa ${order.tableId}: ${formatOrderText(order)} [${order.status}]`}
+  onDelete={markOrderReady}
+  note={order.note}
+/>
+
               );
             }}
           />
@@ -340,50 +564,64 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     backgroundColor: '#ffffff',
   },
+
   modeSwitchContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 8,
   },
 
-  // Waiter layout
+  // ----- WAITER LAYOUT -----
   waiterRoot: {
     flex: 1,
   },
+
   tableSelector: {
     marginBottom: 8,
   },
+
   tablesRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginTop: 4,
   },
+
   tableChip: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#0acc2aff',
+    borderColor: '#0acc2a',
     marginRight: 6,
     marginBottom: 6,
     backgroundColor: '#ffffff',
   },
+
   tableChipSelected: {
-    backgroundColor: '#0acc2aff',
+    backgroundColor: '#0acc2a',
   },
+
+  tableChipText: {
+    color: '#0acc2a',
+    fontWeight: '600',
+  },
+
   tableChipTextSelected: {
-  color: '#ffffff',
-  fontWeight: '700',
-},
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+
   waiterContent: {
     flex: 1,
     flexDirection: 'row',
     marginTop: 4,
   },
+
   categoryColumn: {
     width: 110,
     marginRight: 8,
   },
+
   categoryButton: {
     paddingVertical: 10,
     paddingHorizontal: 8,
@@ -391,53 +629,77 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#f2f2f2',
   },
+
+  categoryButtonSelected: {
+    backgroundColor: '#5e0acc',
+  },
+
   categoryText: {
     color: '#333',
     fontSize: 13,
   },
 
- menuGridContainer: {
-  flex: 1,
-  paddingHorizontal: 4,   // 👈 Helps spacing look clean
-},
+  categoryTextSelected: {
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+
+  menuGridContainer: {
+    flex: 1,
+    paddingHorizontal: 4, // spacing for grid
+  },
+
   gridTitle: {
     color: '#333',
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 8,
   },
+
   menuList: {
-  justifyContent: 'space-between',
-  paddingBottom: 80,
-},
-productCard: {
-  width: '48%',               // 👈 FIXES the stretching issue
-  backgroundColor: '#ffffff',
-  borderRadius: 12,
-  borderWidth: 1,
-  borderColor: '#eee',
-  padding: 8,
-  marginBottom: 12,
-}
-,
+    justifyContent: 'space-between',
+    paddingBottom: 80,
+  },
+
+  productCard: {
+    width: '48%', // fix odd last item stretching
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#eee',
+    padding: 8,
+    marginBottom: 12,
+  },
+
+  productImage: {
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+    marginBottom: 6,
+    width: '100%',
+  },
+
   productImagePlaceholder: {
     height: 70,
     borderRadius: 8,
     backgroundColor: '#f0f0f0',
     marginBottom: 6,
   },
+
   productName: {
     fontSize: 13,
     fontWeight: '600',
     marginBottom: 4,
     color: '#333',
   },
+
   productPrice: {
     fontSize: 13,
     fontWeight: 'bold',
     color: '#27ae60',
   },
 
+  // ----- CART BAR -----
   cartBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -448,41 +710,263 @@ productCard: {
     borderColor: '#ddd',
     backgroundColor: '#fafafa',
   },
+
   cartTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: '#333',
   },
+
   cartSubtitle: {
     fontSize: 13,
     color: '#666',
   },
+
   cartButtons: {
     flexDirection: 'row',
     gap: 8,
   },
 
-  // Kitchen list
+  // ----- KITCHEN LIST -----
   listContainer: {
     flex: 1,
     marginTop: 16,
   },
+
   sectionTitle: {
     color: '#333',
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 8,
   },
+
   emptyText: {
     color: '#888',
     fontSize: 16,
   },
-  productImage: {
-  height: 80,
-  borderRadius: 8,
-  backgroundColor: '#f0f0f0',
-  marginBottom: 6,
-  width: '100%',
+
+  // ----- CUSTOMIZATION MODAL (BURGER KING STYLE) -----
+customModal: {
+  position: 'absolute',
+  top: 5,                 // moved slightly up
+  left: 10,                // wider modal
+  right: 10,
+  bottom: 250,              // increased modal height
+  backgroundColor: '#ffffff',
+  borderRadius: 22,        // smoother round edges
+  padding: 20,
+  elevation: 15,
+
+  // NEW ✨ dark green edge
+  borderWidth: 3,
+  borderColor: '#0b6623',  // dark rich green (looks professional)
+},
+
+customTopRow: {
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginBottom: 16,
+},
+
+
+  customProductImage: {
+    width: 310,
+    height: 190,
+    borderRadius: 12,
+    backgroundColor: '#f0f0f0',
+  },
+customTitle: {
+  fontSize: 22,
+  fontWeight: '700',
+  color: '#333',
+  textAlign: 'center',
+},
+
+customPrice: {
+  fontSize: 18,
+  fontWeight: '700',
+  color: '#27ae60',
+  textAlign: 'center',
+  marginBottom: 10,
+},
+
+
+  optionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 8,
+    color: '#333',
+  },
+
+  optionSubtitle: {
+    fontSize: 12,
+    color: '#777',
+    marginBottom: 6,
+  },
+
+  // onion options
+  onionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    marginTop: 4,
+  },
+
+  onionOption: {
+    flex: 1,
+    marginRight: 8,
+    backgroundColor: '#fafafa',
+    borderRadius: 12,
+    padding: 6,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+
+  optionImage: {
+    width: '100%',
+    height: 70,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+
+  optionImageDisabled: {
+    opacity: 0.4,
+  },
+
+  optionBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#27ae60',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  optionBadgeCancel: {
+    backgroundColor: '#c0392b',
+  },
+
+  optionBadgeText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+optionSelectedBorder: {
+  borderColor: '#0acc2a',   // brighter green
+  borderWidth: 3,            // THICK border
+  shadowColor: '#0acc2a',
+  shadowOffset: { width: 0, height: 0 },
+  shadowOpacity: 0.6,
+  shadowRadius: 8,
+  elevation: 8,               // Android shadow
+},
+
+
+  onionLabel: {
+    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333',
+  },
+
+  // drink options
+  drinkRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    marginTop: 4,
+  },
+
+  drinkOption: {
+    flex: 1,
+    marginRight: 8,
+    backgroundColor: '#fafafa',
+    borderRadius: 12,
+    padding: 6,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    alignItems: 'center',
+  },
+
+  drinkImage: {
+    width: 50,
+    height: 80,
+    borderRadius: 8,
+    marginBottom: 4,
+    backgroundColor: '#f0f0f0',
+  },
+
+  drinkLabel: {
+    fontSize: 12,
+    textAlign: 'center',
+    color: '#333',
+  },
+
+  modalButtons: {
+    marginTop: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+
+  // ----- (OLD GENERIC OPTION STYLES – keep if you still use them) -----
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 10,
+  },
+
+  optionButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#aaa',
+    backgroundColor: '#eee',
+  },
+
+  optionSelected: {
+    backgroundColor: '#5e0acc',
+    borderColor: '#5e0acc',
+  },
+
+  optionText: {
+    color: 'black',
+    fontWeight: '600',
+  },
+  quantityRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginBottom: 12,
+  gap: 12,
+},
+
+qtyButton: {
+  width: 34,
+  height: 34,
+  borderRadius: 6,
+  backgroundColor: '#0acc2a',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+
+qtyButtonText: {
+  color: '#ffffff',
+  fontSize: 24,
+  fontWeight: '700',
+  marginTop: -2, // optical centering
+},
+
+qtyText: {
+  fontSize: 20,
+  fontWeight: '600',
+  minWidth: 32,
+  textAlign: 'center',
 },
 
 });
+
