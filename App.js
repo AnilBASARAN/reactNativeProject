@@ -222,22 +222,32 @@ export default function App() {
   }
 
   function handleProductPress(item) {
-    const needsDrink = ['kofte-ekmek', 'hamburger',"patso","karisik-tost","waffle"].includes(item.id);
-    const needsOnion = item.id === 'kofte-ekmek';
+  const needsDrink = ['kofte-ekmek', 'hamburger', 'patso', 'karisik-tost', 'waffle']
+    .includes(item.id);
+  const needsOnion = item.id === 'kofte-ekmek';
 
-    if (needsDrink || needsOnion) {
-      setCustomProduct(item);
-      setQuantity(1);
+  if (needsDrink || needsOnion) {
+    setCustomProduct(item);
+    setQuantity(1);
+
+    if (needsOnion) {
+      // sadece köfte ekmekte otomatik 1 soğanlı
       setOnionYes(1);
       setOnionNo(0);
-      setDrinkCounts({ coke: 0, fanta: 0, ayran: 0 });
-      setSauces({ ketcap: false, mayonez: false, aci: false });
-      setNoteText('');
-      setCustomModalVisible(true);
     } else {
-      addItemToBasket(item);
+      // diğer ürünlerde soğan değerleri sıfırlansın
+      setOnionYes(0);
+      setOnionNo(0);
     }
+
+    setDrinkCounts({ coke: 0, fanta: 0, ayran: 0 });
+    setSauces({ ketcap: false, mayonez: false, aci: false });
+    setNoteText('');
+    setCustomModalVisible(true);
+  } else {
+    addItemToBasket(item);
   }
+}
 
   function handleCustomizationComplete() {
     if (!customProduct) return;
