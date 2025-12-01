@@ -15,24 +15,24 @@ const TABLES = [1, 2, 3, 4, 5];
 
 const MENU_ITEMS = [
   // MEAT
-  { id: 'kofte-ekmek', name: 'Köfte Ekmek', price: 180, category: 'MEAT' },
-  { id: 'hamburger', name: 'Hamburger', price: 160, category: 'MEAT' },
-  { id: 'kofte-tabak', name: 'Köfte Porsiyon', price: 220, category: 'MEAT' },
+  { id: 'kofte-ekmek', name: 'Köfte Ekmek', price: 250, category: 'MEAT' },
+  { id: 'hamburger', name: 'Hamburger', price: 300, category: 'MEAT' },
+  { id: 'kofte-tabak', name: 'Köfte Porsiyon', price: 350, category: 'MEAT' },
 
   // TOASTS
-  { id: 'karisik-tost', name: 'Karışık Tost', price: 120, category: 'TOAST' },
-  { id: 'kasarli-tost', name: 'Kaşarlı Tost', price: 100, category: 'TOAST' },
-  { id: 'sucuklu-tost', name: 'Sucuklu Tost', price: 110, category: 'TOAST' },
+  { id: 'karisik-tost', name: 'Karışık Tost', price: 150, category: 'TOAST' },
+  { id: 'kasarli-tost', name: 'Kaşarlı Tost', price: 130, category: 'TOAST' },
+  { id: 'sucuklu-tost', name: 'Sucuklu Tost', price: 140, category: 'TOAST' },
 
   // POTATOES
-  { id: 'patso', name: 'Patso', price: 95, category: 'POTATO' },
-  { id: 'patates', name: 'Patates Kızartması', price: 75, category: 'POTATO' },
+  { id: 'patso', name: 'Patso', price: 150, category: 'POTATO' },
+  { id: 'patates', name: 'Patates Kızartması', price: 150, category: 'POTATO' },
 
   // DESSERTS
   { id: 'waffle', name: 'Waffle', price: 150, category: 'DESSERT' },
-  { id: 'cheesecake', name: 'Cheesecake', price: 140, category: 'DESSERT' },
-  { id: 'tiramisu', name: 'Tiramisu', price: 130, category: 'DESSERT' },
-  { id: 'trilece', name: 'Trileçe', price: 130, category: 'DESSERT' },
+  { id: 'cheesecake', name: 'Cheesecake', price: 200, category: 'DESSERT' },
+  { id: 'tiramisu', name: 'Tiramisu', price: 150, category: 'DESSERT' },
+  { id: 'trilece', name: 'Trileçe', price: 150, category: 'DESSERT' },
 ];
 const POPULAR_IDS = [
   'kofte-ekmek',
@@ -76,6 +76,12 @@ const DRINK_OPTIONS = [
   { id: 'ayran', label: 'Ayran', image: require('./assets/drink-ayran.jpg') },
 ];
 
+const SAUCE_OPTIONS = [
+  { id: 'ketcap', label: 'Ketçap' },
+  { id: 'mayonez', label: 'Mayonez' },
+  { id: 'aci', label: 'Acı Sos' },
+];
+
 
 const ONION_IMAGE = require('./assets/onion.jpg');
 
@@ -89,8 +95,22 @@ export default function App() {
   const [customModalVisible, setCustomModalVisible] = useState(false);
 const [customProduct, setCustomProduct] = useState(null);
 
-const [selectedDrink, setSelectedDrink] = useState(null);
-const [withOnion, setWithOnion] = useState(null);
+// İçecek adetleri (sandviç başına kaç tane hangi içecek)
+const [drinkCounts, setDrinkCounts] = useState({
+  coke: 0,
+  fanta: 0,
+  ayran: 0,
+});
+
+const [sauces, setSauces] = useState({
+  ketcap: false,
+  mayonez: false,
+  aci: false,
+});
+
+
+const [onionYes, setOnionYes] = useState(1); // start with 1 soğanlı
+const [onionNo, setOnionNo] = useState(0);
 const [quantity, setQuantity] = useState(1);
 
 const [validationModalVisible, setValidationModalVisible] = useState(false);
@@ -152,13 +172,17 @@ function submitOrder() {
   }
 
   // Keep all options from basket items
-  const selectedItems = basket.map((item) => ({
-    name: item.name,
-    quantity: item.quantity,
-    drink: item.drink ?? null,
-    onion: typeof item.onion === 'boolean' ? item.onion : null,
-    note: item.note ?? '',
-  }));
+const selectedItems = basket.map((item) => ({
+  name: item.name,
+  quantity: item.quantity,
+  onionYes: item.onionYes ?? 0,
+  onionNo: item.onionNo ?? 0,
+  drinks: item.drinks ?? item.drinkCounts ?? { coke: 0, fanta: 0, ayran: 0 },
+  sauces: item.sauces ?? item.sauceCounts ?? { ketcap: 0, mayonez: 0, aci: 0 },
+  note: item.note ?? '',
+}));
+
+
 
   // Optional: aggregate notes into a single order-level note
   const orderNote = basket
@@ -210,8 +234,13 @@ function submitOrder() {
 
   if (needsDrink || needsOnion) {
     setCustomProduct(item);
-    setSelectedDrink(null);   // reset
-    setWithOnion(null);
+    setDrinkCounts({ coke: 0, fanta: 0, ayran: 0 });
+  setSauces({ ketcap: false, mayonez: false, aci: false });
+
+    setQuantity(1);           // new order starts with 1
+    setOnionYes(1);           // 1 soğanlı by default
+    setOnionNo(0);            // 0 soğansız
+    setNoteText("");
     setCustomModalVisible(true);
   } else {
     // Items without customization go directly
@@ -219,28 +248,39 @@ function submitOrder() {
   }
 }
 
+function getTotalDrinks(dc) {
+  return dc.coke + dc.fanta + dc.ayran;
+}
+
+
 function handleCustomizationComplete() {
-  // ONION must be selected for köfte ekmek
-  if (customProduct.id === 'kofte-ekmek' && withOnion === null) {
-    setValidationMessage("Lütfen soğan seçimi yapınız.");
+  // Köfte ekmekte soğan adetleri toplamı, ürün adedine eşit olmalı
+  if (customProduct.id === 'kofte-ekmek') {
+    if (onionYes + onionNo !== quantity) {
+      setValidationMessage('Soğan adetleri toplamı ürün adediyle eşleşmiyor.');
+      setValidationModalVisible(true);
+      return;
+    }
+  }
+
+  // İçecek (none dahil) zorunlu
+  if (
+    (customProduct.id === 'kofte-ekmek' || customProduct.id === 'hamburger') &&
+    selectedDrink === null
+  ) {
+    setValidationMessage('Lütfen içecek seçiniz.');
     setValidationModalVisible(true);
     return;
   }
 
-  // DRINK must be selected (including 'none'):
-  if ((customProduct.id === 'kofte-ekmek' || customProduct.id === 'hamburger')
-      && selectedDrink === null) {
-    setValidationMessage("Lütfen içecek seçiniz.");
-    setValidationModalVisible(true);
-    return;
-  }
-
-  // Build product with options
+  // Seçeneklerle beraber ürünü sepete ekle
   addItemToBasket({
     ...customProduct,
-    drink: selectedDrink,
-    onion: withOnion,
+    drinkCounts,   // istersen böyle obje de ekleyebilirsin
+    sauceCounts,
     quantity: quantity,
+    onionYes: onionYes,
+    onionNo: onionNo,
     note: noteText,
   });
 
@@ -248,6 +288,32 @@ function handleCustomizationComplete() {
 }
 
 
+
+function increaseQuantity() {
+  const newQ = quantity + 1;
+  setQuantity(newQ);
+
+  // If this is Köfte Ekmek, new units start as soğanlı
+  if (customProduct && customProduct.id === 'kofte-ekmek') {
+    setOnionYes(onionYes + 1);
+  }
+}
+
+function decreaseQuantity() {
+  if (quantity === 1) return;
+
+  const newQ = quantity - 1;
+  setQuantity(newQ);
+
+  if (customProduct && customProduct.id === 'kofte-ekmek') {
+    // remove from soğanlı first, then soğansız if needed
+    if (onionYes > 0) {
+      setOnionYes(onionYes - 1);
+    } else if (onionNo > 0) {
+      setOnionNo(onionNo - 1);
+    }
+  }
+}
 
 
 function formatOrderText(order) {
@@ -259,24 +325,36 @@ function formatOrderText(order) {
     .map((item) => {
       let extras = [];
 
-      // Drink text
-      if (item.drink) {
-        if (item.drink === 'none') {
-          extras.push('İçecek Yok');
-        } else {
-          const drinkLabel = getDrinkLabel(item.drink);
-          if (drinkLabel) {
-            extras.push(drinkLabel);
-          }
-        }
-      }
+     // Onion text (adetli)
+if (item.onionYes || item.onionNo) {
+  if (item.onionYes > 0) extras.push(`${item.onionYes} Soğanlı`);
+  if (item.onionNo > 0) extras.push(`${item.onionNo} Soğansız`);
+}
 
-      // Onion text
-      if (item.onion === true) {
-        extras.push('Soğanlı');
-      } else if (item.onion === false) {
-        extras.push('Soğansız');
-      }
+// Drink text
+if (item.drinks) {
+  const d = item.drinks;
+  if (d.coke > 0) extras.push(`${d.coke} Coca Cola`);
+  if (d.fanta > 0) extras.push(`${d.fanta} Fanta`);
+  if (d.ayran > 0) extras.push(`${d.ayran} Ayran`);
+
+  const used = (d.coke || 0) + (d.fanta || 0) + (d.ayran || 0);
+  if (used < item.quantity) {
+    extras.push(`${item.quantity - used} İçecek Yok`);
+  }
+}
+
+// Sauce text
+// Sauce text
+if (item.sauces) {
+  const s = item.sauces;
+  if (s.ketcap) extras.push('Ketçap');
+  if (s.mayonez) extras.push('Mayonez');
+  if (s.aci) extras.push('Acı Sos');
+}
+
+
+
 
       const baseText = `${item.quantity}x ${item.name}`;
 
@@ -424,109 +502,344 @@ function formatOrderText(order) {
 
     {/* QUANTITY ROW */}
     <View style={styles.quantityRow}>
-      <Pressable
-        style={styles.qtyButton}
-        onPress={() => setQuantity((q) => Math.max(1, q - 1))}
-      >
-        <Text style={styles.qtyButtonText}>-</Text>
-      </Pressable>
+     <Pressable style={styles.qtyButton} onPress={decreaseQuantity}>
+  <Text style={styles.qtyButtonText}>-</Text>
+</Pressable>
 
-      <Text style={styles.qtyText}>{quantity}</Text>
+<Text style={styles.qtyText}>{quantity}</Text>
 
-      <Pressable
-        style={styles.qtyButton}
-        onPress={() => setQuantity((q) => q + 1)}
-      >
-        <Text style={styles.qtyButtonText}>+</Text>
-      </Pressable>
+<Pressable style={styles.qtyButton} onPress={increaseQuantity}>
+  <Text style={styles.qtyButtonText}>+</Text>
+</Pressable>
+
     </View>
 
-    {/* ONION SECTION – only for köfte ekmek */}
-    {customProduct.id === 'kofte-ekmek' && (
-      <>
-        <Text style={styles.optionTitle}>Soğan Dilimi</Text>
-        <Text style={styles.optionSubtitle}>Lütfen seçiminizi yapınız</Text>
+{customProduct.id === 'kofte-ekmek' && (
+  <>
+    <Text style={styles.optionTitle}>Soğan Seçimi</Text>
+    <Text style={styles.optionSubtitle}>
+      Toplam: {onionYes + onionNo} / {quantity}
+    </Text>
 
-        <View style={styles.onionRow}>
-          {/* With onion */}
+    <View style={styles.onionRow}>
+      {/* SOĞANLI KARTI */}
+      <View style={styles.onionOption}>
+        <Image
+          source={ONION_IMAGE}
+          style={styles.optionImage}
+          resizeMode="cover"
+        />
+        <Text style={styles.onionLabel}>Soğanlı</Text>
+
+        <View style={styles.onionCountRow}>
           <Pressable
-            style={[
-              styles.onionOption,
-              withOnion === true && styles.optionSelectedBorder,
-            ]}
-            onPress={() => setWithOnion(true)}
+            style={styles.qtyButton}
+            onPress={() => {
+              // soğanlı -> soğansız
+              if (onionYes > 0) {
+                setOnionYes(onionYes - 1);
+                setOnionNo(onionNo + 1);
+              }
+            }}
           >
-            <Image
-              source={ONION_IMAGE}
-              style={styles.optionImage}
-              resizeMode="cover"
-            />
-            <View style={styles.optionBadge}>
-              <Text style={styles.optionBadgeText}>✓</Text>
-            </View>
-            <Text style={styles.onionLabel}>Soğanlı</Text>
+            <Text style={styles.qtyButtonText}>-</Text>
           </Pressable>
 
-          {/* Without onion */}
+          <Text style={styles.qtyText}>{onionYes}</Text>
+
           <Pressable
-            style={[
-              styles.onionOption,
-              withOnion === false && styles.optionSelectedBorder,
-            ]}
-            onPress={() => setWithOnion(false)}
+            style={styles.qtyButton}
+            onPress={() => {
+              // soğansız -> soğanlı
+              if (onionNo > 0) {
+                setOnionYes(onionYes + 1);
+                setOnionNo(onionNo - 1);
+              }
+            }}
           >
-            <Image
-              source={ONION_IMAGE}
-              style={[styles.optionImage, styles.optionImageDisabled]}
-              resizeMode="cover"
-            />
-            <View style={[styles.optionBadge, styles.optionBadgeCancel]}>
-              <Text style={styles.optionBadgeText}>✕</Text>
-            </View>
-            <Text style={styles.onionLabel}>Soğansız</Text>
+            <Text style={styles.qtyButtonText}>+</Text>
           </Pressable>
         </View>
-      </>
-    )}
+      </View>
+
+      {/* SOĞANSIZ KARTI */}
+      <View style={styles.onionOption}>
+        <View style={styles.onionNoWrapper}>
+          <Image
+            source={ONION_IMAGE}
+            style={[styles.optionImage, styles.optionImageDisabled]}
+            resizeMode="cover"
+          />
+          {/* KIRMIZI X */}
+          <View style={styles.onionNoCrossLine} />
+          <View style={[styles.onionNoCrossLine, styles.onionNoCrossLineReverse]} />
+        </View>
+
+        <Text style={styles.onionLabel}>Soğansız</Text>
+
+        <View style={styles.onionCountRow}>
+          <Pressable
+            style={styles.qtyButton}
+            onPress={() => {
+              // soğansız -> soğanlı
+              if (onionNo > 0) {
+                setOnionNo(onionNo - 1);
+                setOnionYes(onionYes + 1);
+              }
+            }}
+          >
+            <Text style={styles.qtyButtonText}>-</Text>
+          </Pressable>
+
+          <Text style={styles.qtyText}>{onionNo}</Text>
+
+          <Pressable
+            style={styles.qtyButton}
+            onPress={() => {
+              // soğanlı -> soğansız
+              if (onionYes > 0) {
+                setOnionNo(onionNo + 1);
+                setOnionYes(onionYes - 1);
+              }
+            }}
+          >
+            <Text style={styles.qtyButtonText}>+</Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  </>
+)}
+
+
+{(customProduct.id === 'kofte-ekmek' ||
+  customProduct.id === 'hamburger') && (
+  <>
+   {/* SOS SEÇİMİ */}
+<Text style={styles.optionTitle}>Soslar</Text>
+<Text style={styles.optionSubtitle}>İstediğiniz sosları seçebilirsiniz</Text>
+
+<View style={{ marginTop: 6 }}>
+  {SAUCE_OPTIONS.map((s) => {
+    const isActive = sauces[s.id];
+
+    return (
+      <Pressable
+        key={s.id}
+        style={[
+          styles.sauceRow,
+          isActive && styles.sauceRowActive,
+        ]}
+        onPress={() =>
+          setSauces((prev) => ({
+            ...prev,
+            [s.id]: !prev[s.id], // TRUE ↔ FALSE toggle
+          }))
+        }
+      >
+        <Text style={styles.sauceLabel}>{s.label}</Text>
+
+        {/* Checkbox */}
+        <View
+          style={[
+            styles.checkbox,
+            isActive && styles.checkboxActive,
+          ]}
+        >
+          {isActive && <Text style={styles.checkboxCheck}>✓</Text>}
+        </View>
+      </Pressable>
+    );
+  })}
+</View>
+
+  </>
+)}
+
+
 
     {/* DRINK SECTION – for köfte ekmek and hamburger */}
-    {(customProduct.id === 'kofte-ekmek' ||
-      customProduct.id === 'hamburger') && (
-      <>
-        <Text style={styles.optionTitle}>Seçiniz</Text>
-        <Text style={styles.optionSubtitle}>
-          Bir seçenek seçmek zorunludur (İçecek Yok dahil)
-        </Text>
+ {(customProduct.id === 'kofte-ekmek' ||
+  customProduct.id === 'hamburger') && (
+  <>
+    <Text style={styles.optionTitle}>İçecek Seçimi</Text>
+    <Text style={styles.optionSubtitle}>
+      Toplam içecek: {getTotalDrinks(drinkCounts)} (Sipariş adedi: {quantity}) 
+      {'\n'}Boş kalanlar "İçecek Yok" sayılır.
+    </Text>
 
-        <View style={styles.drinkRow}>
-          {DRINK_OPTIONS.map((drink) => {
-            const selected = selectedDrink === drink.id;
-            return (
-              <Pressable
-                key={drink.id}
-                style={[
-                  styles.drinkOption,
-                  selected && styles.optionSelectedBorder,
-                ]}
-                onPress={() => setSelectedDrink(drink.id)}
-              >
-                <Image
-                  source={drink.image}
-                  style={styles.drinkImage}
-                  resizeMode="cover"
-                />
-                {selected && (
-                  <View style={styles.optionBadge}>
-                    <Text style={styles.optionBadgeText}>✓</Text>
-                  </View>
-                )}
-                <Text style={styles.drinkLabel}>{drink.label}</Text>
-              </Pressable>
-            );
-          })}
+    <View style={styles.drinkRow}>
+      {/* İÇECEK YOK KARTI (sadece gösterim) */}
+      <View style={styles.drinkOption}>
+        <Image
+          source={DRINK_OPTIONS.find((d) => d.id === 'none').image}
+          style={styles.drinkImage}
+          resizeMode="cover"
+        />
+        <Text style={styles.drinkLabel}>İçecek Yok</Text>
+        <Text style={styles.drinkCountText}>
+          {Math.max(
+            0,
+            quantity - getTotalDrinks(drinkCounts)
+          )}
+        </Text>
+      </View>
+
+      {/* Cola */}
+      <View style={styles.drinkOption}>
+        <Image
+          source={DRINK_OPTIONS.find((d) => d.id === 'coke').image}
+          style={styles.drinkImage}
+          resizeMode="cover"
+        />
+        <Text style={styles.drinkLabel}>Coca Cola</Text>
+
+        <View style={styles.onionCountRow}>
+          <Pressable
+            style={styles.qtyButton}
+            onPress={() =>
+              setDrinkCounts((prev) =>
+                prev.coke > 0 ? { ...prev, coke: prev.coke - 1 } : prev
+              )
+            }
+          >
+            <Text style={styles.qtyButtonText}>-</Text>
+          </Pressable>
+
+          <Text style={styles.qtyText}>{drinkCounts.coke}</Text>
+
+          <Pressable
+            style={styles.qtyButton}
+            onPress={() =>
+              setDrinkCounts((prev) => {
+                const used = getTotalDrinks(prev);
+                if (used >= quantity) return prev;
+                return { ...prev, coke: prev.coke + 1 };
+              })
+            }
+          >
+            <Text style={styles.qtyButtonText}>+</Text>
+          </Pressable>
         </View>
-      </>
-    )}
+      </View>
+
+      {/* Fanta */}
+      <View style={styles.drinkOption}>
+        <Image
+          source={DRINK_OPTIONS.find((d) => d.id === 'fanta').image}
+          style={styles.drinkImage}
+          resizeMode="cover"
+        />
+        <Text style={styles.drinkLabel}>Fanta</Text>
+
+        <View style={styles.onionCountRow}>
+          <Pressable
+            style={styles.qtyButton}
+            onPress={() =>
+              setDrinkCounts((prev) =>
+                prev.fanta > 0 ? { ...prev, fanta: prev.fanta - 1 } : prev
+              )
+            }
+          >
+            <Text style={styles.qtyButtonText}>-</Text>
+          </Pressable>
+
+          <Text style={styles.qtyText}>{drinkCounts.fanta}</Text>
+
+          <Pressable
+            style={styles.qtyButton}
+            onPress={() =>
+              setDrinkCounts((prev) => {
+                const used = getTotalDrinks(prev);
+                if (used >= quantity) return prev;
+                return { ...prev, fanta: prev.fanta + 1 };
+              })
+            }
+          >
+            <Text style={styles.qtyButtonText}>+</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Ayran */}
+      <View style={styles.drinkOption}>
+        <Image
+          source={DRINK_OPTIONS.find((d) => d.id === 'ayran').image}
+          style={styles.drinkImage}
+          resizeMode="cover"
+        />
+        <Text style={styles.drinkLabel}>Ayran</Text>
+
+        <View style={styles.onionCountRow}>
+          <Pressable
+            style={styles.qtyButton}
+            onPress={() =>
+              setDrinkCounts((prev) =>
+                prev.ayran > 0 ? { ...prev, ayran: prev.ayran - 1 } : prev
+              )
+            }
+          >
+            <Text style={styles.qtyButtonText}>-</Text>
+          </Pressable>
+
+          <Text style={styles.qtyText}>{drinkCounts.ayran}</Text>
+
+          <Pressable
+            style={styles.qtyButton}
+            onPress={() =>
+              setDrinkCounts((prev) => {
+                const used = getTotalDrinks(prev);
+                if (used >= quantity) return prev;
+                return { ...prev, ayran: prev.ayran + 1 };
+              })
+            }
+          >
+            <Text style={styles.qtyButtonText}>+</Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  </>
+)}
+
+{/* SOS SEÇİMİ */}
+<Text style={styles.optionTitle}>Soslar</Text>
+<Text style={styles.optionSubtitle}>İstediğiniz sosları seçebilirsiniz</Text>
+
+<View style={{ marginTop: 6 }}>
+  {SAUCE_OPTIONS.map((s) => {
+    const isActive = sauces[s.id];
+
+    return (
+      <Pressable
+        key={s.id}
+        style={[
+          styles.sauceRow,
+          isActive && styles.sauceRowActive,
+        ]}
+        onPress={() =>
+          setSauces((prev) => ({
+            ...prev,
+            [s.id]: !prev[s.id], // toggle true/false
+          }))
+        }
+      >
+        <Text style={styles.sauceLabel}>{s.label}</Text>
+
+        {/* Checkbox */}
+        <View
+          style={[
+            styles.checkbox,
+            isActive && styles.checkboxActive,
+          ]}
+        >
+          {isActive && <Text style={styles.checkboxCheck}>✓</Text>}
+        </View>
+      </Pressable>
+    );
+  })}
+</View>
+
 
     {/* NOTE */}
     <Text style={styles.optionTitle}>Ek Not</Text>
@@ -541,9 +854,9 @@ function formatOrderText(order) {
 
     {/* Buttons */}
     <View style={styles.modalButtons}>
-      <Button title="İptal" onPress={() => setCustomModalVisible(false)} />
+      <Button title="İptal" color={"#c0392b"} onPress={() => setCustomModalVisible(false)} />
       <Button
-        title="Sepete Ekle"
+        title="Siparişe Ekle"
         color="#27ae60"
         onPress={handleCustomizationComplete}
       />
@@ -678,7 +991,7 @@ const styles = StyleSheet.create({
   },
 
   categoryButtonSelected: {
-    backgroundColor: '#5e0acc',
+    backgroundColor: '#27ae60',
   },
 
   categoryText: {
@@ -798,7 +1111,7 @@ customModal: {
   top: 5,                 // moved slightly up
   left: 10,                // wider modal
   right: 10,
-  bottom: 250,              // increased modal height
+  bottom: 100,              // increased modal height
   backgroundColor: '#ffffff',
   borderRadius: 22,        // smoother round edges
   padding: 20,
@@ -1014,6 +1327,96 @@ qtyText: {
   minWidth: 32,
   textAlign: 'center',
 },
+onionCountRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginTop: 6,
+  gap: 8,
+},
+
+onionCountLabel: {
+  fontSize: 14,
+  fontWeight: '600',
+  marginBottom: 4,
+},
+
+onionCountRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginTop: 6,
+  gap: 8,
+},
+
+onionNoWrapper: {
+  position: 'relative',
+},
+
+onionNoCrossLine: {
+  position: 'absolute',
+  left: 4,
+  right: 4,
+  top: 10,
+  bottom: 10,
+  borderTopWidth: 3,
+  borderColor: '#c0392b',
+  transform: [{ rotate: '45deg' }],
+},
+
+onionNoCrossLineReverse: {
+  transform: [{ rotate: '-45deg' }],
+},
+drinkCountText: {
+  marginTop: 4,
+  fontSize: 14,
+  fontWeight: '600',
+},
+
+sauceRow: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  paddingVertical: 10,
+  paddingHorizontal: 12,
+  borderRadius: 10,
+  backgroundColor: '#f2f2f2',
+  marginBottom: 6,
+},
+
+sauceRowActive: {
+  backgroundColor: '#d6f5dd',
+  borderWidth: 2,
+  borderColor: '#27ae60',
+},
+
+sauceLabel: {
+  fontSize: 15,
+  fontWeight: '600',
+  color: '#333',
+},
+
+checkbox: {
+  width: 26,
+  height: 26,
+  borderRadius: 6,
+  borderWidth: 2,
+  borderColor: '#aaa',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+
+checkboxActive: {
+  backgroundColor: '#27ae60',
+  borderColor: '#27ae60',
+},
+
+checkboxCheck: {
+  color: 'white',
+  fontSize: 18,
+  fontWeight: '900',
+},
+
 
 });
 
