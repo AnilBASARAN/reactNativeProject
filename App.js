@@ -141,34 +141,45 @@ function addItemToBasket(item) {
     setBasket([]);
   }
 
-  function submitOrder() {
-    if (!selectedTable) {
-      // you can replace this with Alert later if you want
-      console.log('No table selected');
-      return;
-    }
-    if (basket.length === 0) {
-      console.log('Basket empty');
-      return;
-    }
-
-    const selectedItems = basket.map((item) => ({
-      name: item.name,
-      quantity: item.quantity,
-    }));
-
-    setOrders((currentOrders) => [
-      ...currentOrders,
-      {
-        id: Math.random().toString(),
-        tableId: selectedTable,
-        items: selectedItems,
-        status: 'PENDING',
-      },
-    ]);
-
-    clearBasket();
+function submitOrder() {
+  if (!selectedTable) {
+    console.log('No table selected');
+    return;
   }
+  if (basket.length === 0) {
+    console.log('Basket empty');
+    return;
+  }
+
+  // Keep all options from basket items
+  const selectedItems = basket.map((item) => ({
+    name: item.name,
+    quantity: item.quantity,
+    drink: item.drink ?? null,
+    onion: typeof item.onion === 'boolean' ? item.onion : null,
+    note: item.note ?? '',
+  }));
+
+  // Optional: aggregate notes into a single order-level note
+  const orderNote = basket
+    .map((item) => item.note)
+    .filter(Boolean)
+    .join(' | ');
+
+  setOrders((currentOrders) => [
+    ...currentOrders,
+    {
+      id: Math.random().toString(),
+      tableId: selectedTable,
+      items: selectedItems,
+      status: 'PENDING',
+      note: orderNote, // so GoalItem's note={order.note} actually has data
+    },
+  ]);
+
+  clearBasket();
+}
+
 
   // WAITER: remove order (served)
   function deleteOrderHandler(id) {
@@ -239,15 +250,51 @@ function handleCustomizationComplete() {
 
 
 
-  function formatOrderText(order) {
-    if (!order.items || order.items.length === 0) {
-      return 'Empty order';
-    }
-
-    return order.items
-      .map((item) => `${item.quantity}x ${item.name}`)
-      .join(', ');
+function formatOrderText(order) {
+  if (!order.items || order.items.length === 0) {
+    return 'Empty order';
   }
+
+  return order.items
+    .map((item) => {
+      let extras = [];
+
+      // Drink text
+      if (item.drink) {
+        if (item.drink === 'none') {
+          extras.push('İçecek Yok');
+        } else {
+          const drinkLabel = getDrinkLabel(item.drink);
+          if (drinkLabel) {
+            extras.push(drinkLabel);
+          }
+        }
+      }
+
+      // Onion text
+      if (item.onion === true) {
+        extras.push('Soğanlı');
+      } else if (item.onion === false) {
+        extras.push('Soğansız');
+      }
+
+      const baseText = `${item.quantity}x ${item.name}`;
+
+      if (extras.length === 0) {
+        return baseText;
+      }
+
+      return `${baseText} (${extras.join(', ')})`;
+    })
+    .join(', ');
+}
+
+
+  function getDrinkLabel(drinkId) {
+  const drink = DRINK_OPTIONS.find((d) => d.id === drinkId);
+  return drink ? drink.label : null;
+}
+
 
   const totalItems = basket.reduce((sum, item) => sum + item.quantity, 0);
   const totalPrice = basket.reduce(
