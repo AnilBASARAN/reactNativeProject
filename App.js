@@ -111,18 +111,30 @@ const NO_ONION_IMAGE = require('./assets/no-onion.jpg');
 export default function App() {
   const [orders, setOrders] = useState([]);
   const [selectedTable, setSelectedTable] = useState(null);
-  const [mode, setMode] = useState('WAITER'); // 'WAITER' | 'KITCHEN'
+
+const [mode, setMode] = useState('ORDER'); // eski 'WAITER' yerine
+const [selectedCashierItems, setSelectedCashierItems] = useState([]);
+const [selectedWaiterItems, setSelectedWaiterItems] = useState([]);
+const [expandedTables, setExpandedTables] = useState({});
+
+  
   const [basket, setBasket] = useState([]); // current order being built
   const [selectedCategory, setSelectedCategory] = useState('POPULAR');
-const [selectedCashierItems, setSelectedCashierItems] = useState([]); 
+
+
   const [customModalVisible, setCustomModalVisible] = useState(false);
   const [customProduct, setCustomProduct] = useState(null);
-const [expandedTables, setExpandedTables] = useState({});
+
 
   const [onionYes, setOnionYes] = useState(1);
   const [onionNo, setOnionNo] = useState(0);
   const [quantity, setQuantity] = useState(1);
 
+const [drinkCounts, setDrinkCounts] = useState({
+  coke: 0,
+  fanta: 0,
+  ayran: 0,
+});
 
 
   const [sauces, setSauces] = useState({
@@ -197,14 +209,17 @@ const selectedItems = basket.map((item) => ({
   quantity: item.quantity,
   onionYes: item.onionYes ?? 0,
   onionNo: item.onionNo ?? 0,
+  drinks: item.drinks ?? { coke: 0, fanta: 0, ayran: 0 },
   sauces: item.sauces ?? {
     ketcap: false,
     mayonez: false,
     aci: false,
   },
   note: item.note ?? '',
-  paidCount: 0, // 🆕 bu item’dan kaç adet ödendi
+  paidCount: item.paidCount || 0,   // ödeme adedi
+  servedCount: item.servedCount || 0, // 🆕 servis adedi
 }));
+
 
 
 
@@ -333,37 +348,56 @@ addItemToBasket({
     }
   }
 
-function formatOrderText(order, showDrinks = true) {
+
+
+  function formatOrderText(order) {
   if (!order.items || order.items.length === 0) {
     return 'Empty order';
   }
 
-  return order.items
-    .map((item) => {
-      const extras = [];
+  const lines = [];
 
-      // Onion text
-      if (item.onionYes || item.onionNo) {
-        if (item.onionYes > 0) extras.push(`${item.onionYes} Soğanlı`);
-        if (item.onionNo > 0) extras.push(`${item.onionNo} Soğansız`);
-      }
+  order.items.forEach((item) => {
+    // Menüden bu ürünün kategorisini bul
+    const menuDef = MENU_ITEMS.find((m) => m.id === item.id);
 
+    // Eğer bu bir içecekse mutfakta göstermiyoruz
+    if (menuDef && menuDef.category === 'DRINK') {
+      return;
+    }
 
-      // Sauce text
-      if (item.sauces) {
-        const s = item.sauces;
-        if (s.ketcap) extras.push('Ketçap');
-        if (s.mayonez) extras.push('Mayonez');
-        if (s.aci) extras.push('Acı Sos');
-      }
+    const extras = [];
 
-      const baseText = `${item.quantity}x ${item.name}`;
-      if (extras.length === 0) return baseText;
+    // Soğan metni
+    if (item.onionYes || item.onionNo) {
+      if (item.onionYes > 0) extras.push(`${item.onionYes} Soğanlı`);
+      if (item.onionNo > 0) extras.push(`${item.onionNo} Soğansız`);
+    }
 
-      return `${baseText} (${extras.join(', ')})`;
-    })
-    .join(', ');
+    // Sos metni
+    if (item.sauces) {
+      const s = item.sauces;
+      if (s.ketcap) extras.push('Ketçap');
+      if (s.mayonez) extras.push('Mayonez');
+      if (s.aci) extras.push('Acı Sos');
+    }
+
+    const baseText = `${item.quantity}x ${item.name}`;
+    if (extras.length === 0) {
+      lines.push(baseText);
+    } else {
+      lines.push(`${baseText} (${extras.join(', ')})`);
+    }
+  });
+
+  // Eğer yemek yok, sadece içecek varsa:
+  if (lines.length === 0) {
+    return 'Sadece içecek (mutfak hazırlığı yok)';
+  }
+
+  return lines.join(', ');
 }
+
 
 
 const totalItems = basket.reduce((sum, item) => sum + item.quantity, 0);
@@ -372,15 +406,6 @@ const totalPrice = basket.reduce(
   0
 );
 
-
-const tablesForCashier = Object.entries(
-  orders.reduce((acc, order) => {
-    const key = String(order.tableId ?? 'Unknown');
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(order);
-    return acc;
-  }, {})
-);
 function toggleCashierItemSelection(unitKey) {
   setSelectedCashierItems((prev) =>
     prev.includes(unitKey)
@@ -389,10 +414,17 @@ function toggleCashierItemSelection(unitKey) {
   );
 }
 
+function toggleWaiterItemSelection(unitKey) {
+  setSelectedWaiterItems((prev) =>
+    prev.includes(unitKey)
+      ? prev.filter((k) => k !== unitKey)
+      : [...prev, unitKey]
+  );
+}
+
 function paySelectedItemsForTable(tableKey) {
   setOrders((currentOrders) => {
-    // Seçilen satırlardan bu masaya ait olanları say
-    const toPayMap = {}; // key: "orderId|itemIndex" -> kaç adet ödenecek
+    const toPayMap = {};
 
     selectedCashierItems.forEach((unitKey) => {
       const [orderId, itemIndexStr, unitIndexStr, unitTableKey] =
@@ -403,9 +435,7 @@ function paySelectedItemsForTable(tableKey) {
       toPayMap[mapKey] = (toPayMap[mapKey] || 0) + 1;
     });
 
-    if (Object.keys(toPayMap).length === 0) {
-      return currentOrders;
-    }
+    if (Object.keys(toPayMap).length === 0) return currentOrders;
 
     const updated = currentOrders.map((order) => {
       let changed = false;
@@ -433,7 +463,7 @@ function paySelectedItemsForTable(tableKey) {
     return updated;
   });
 
-  // Bu masaya ait seçili satırları temizle
+  // bu masaya ait seçili satırları temizle
   setSelectedCashierItems((prev) =>
     prev.filter((unitKey) => {
       const parts = unitKey.split('|');
@@ -442,6 +472,67 @@ function paySelectedItemsForTable(tableKey) {
     })
   );
 }
+
+function serveSelectedItemsForTable(tableKey) {
+  setOrders((currentOrders) => {
+    const toServeMap = {};
+
+    selectedWaiterItems.forEach((unitKey) => {
+      const [orderId, itemIndexStr, unitIndexStr, unitTableKey] =
+        unitKey.split('|');
+      if (unitTableKey !== String(tableKey)) return;
+      const itemIndex = parseInt(itemIndexStr, 10);
+      const mapKey = `${orderId}|${itemIndex}`;
+      toServeMap[mapKey] = (toServeMap[mapKey] || 0) + 1;
+    });
+
+    if (Object.keys(toServeMap).length === 0) return currentOrders;
+
+    const updated = currentOrders.map((order) => {
+      let changed = false;
+
+      const newItems = order.items.map((item, idx) => {
+        const mapKey = `${order.id}|${idx}`;
+        const addCount = toServeMap[mapKey] || 0;
+        if (!addCount) return item;
+
+        const prevServed = item.servedCount || 0;
+        const totalQty = item.quantity || 0;
+        const newServed = Math.min(prevServed + addCount, totalQty);
+
+        if (newServed !== prevServed) {
+          changed = true;
+          return { ...item, servedCount: newServed };
+        }
+        return item;
+      });
+
+      if (!changed) return order;
+      return { ...order, items: newItems };
+    });
+
+    return updated;
+  });
+
+  // bu masaya ait seçili satırları temizle
+  setSelectedWaiterItems((prev) =>
+    prev.filter((unitKey) => {
+      const parts = unitKey.split('|');
+      const unitTableKey = parts[3];
+      return unitTableKey !== String(tableKey);
+    })
+  );
+}
+
+const tablesForCashier = Object.entries(
+  orders.reduce((acc, order) => {
+    const key = String(order.tableId ?? 'Unknown');
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(order);
+    return acc;
+  }, {})
+);
+
 
 
 // tablesForCashier: [ ['1', [order1, order2]], ['3', [order3]], ... ]
@@ -452,7 +543,12 @@ function paySelectedItemsForTable(tableKey) {
   return (
     <View style={styles.appContainer}>
       {/* Mode switcher */}
-      <View style={styles.modeSwitchContainer}>
+<View style={styles.modeSwitchContainer}>
+  <Button
+    title="Order Mode"
+    color={mode === 'ORDER' ? '#0acc2aff' : '#888'}
+    onPress={() => setMode('ORDER')}
+  />
   <Button
     title="Waiter Mode"
     color={mode === 'WAITER' ? '#0acc2aff' : '#888'}
@@ -471,7 +567,8 @@ function paySelectedItemsForTable(tableKey) {
 </View>
 
 
-      {mode === 'WAITER' && (
+
+      {mode === 'ORDER' && (
         <View style={styles.waiterRoot}>
           {/* Table selector */}
           <View style={styles.tableSelector}>
@@ -870,6 +967,250 @@ function paySelectedItemsForTable(tableKey) {
         </View>
       )}
 
+{mode === 'WAITER' && (
+  <View style={styles.cashierContainer}>
+    <Text style={styles.sectionTitle}>Waiter Overview</Text>
+
+    {tablesForCashier.length === 0 && (
+      <Text style={styles.emptyText}>No orders yet.</Text>
+    )}
+
+    <FlatList
+      data={tablesForCashier}
+      keyExtractor={([tableKey]) => tableKey}
+      renderItem={({ item }) => {
+        const [tableKey, tableOrders] = item;
+
+        const unservedUnits = [];
+        const servedUnits = [];
+
+      tableOrders.forEach((order) => {
+  order.items.forEach((it, itemIndex) => {
+    const totalQty = it.quantity || 0;
+    const servedCount = it.servedCount || 0;
+    const paidCount = it.paidCount || 0;
+
+    // 🔥 Menüden kategoriyi bul
+    const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
+    const isDrink = menuDef?.category === 'DRINK';
+
+    for (let unitIndex = 0; unitIndex < totalQty; unitIndex++) {
+      const unitKey = `${order.id}|${itemIndex}|${unitIndex}|${tableKey}`;
+      const isServed = unitIndex < servedCount;
+      const isPaid = unitIndex < paidCount;
+
+      const baseUnit = {
+        unitKey,
+        orderId: order.id,
+        itemIndex,
+        unitIndex,
+        name: it.name,
+        price: it.price,
+        status: order.status,
+        note: it.note,
+        isServed,
+        isPaid,
+        isDrink, // 🆕
+      };
+
+      if (isServed) {
+        servedUnits.push(baseUnit);
+      } else {
+        unservedUnits.push(baseUnit);
+      }
+    }
+  });
+});
+
+
+        // 🔥 Artık TL değil, adet sayıyoruz
+        const totalCount = unservedUnits.length + servedUnits.length;
+        const servedCountTotal = servedUnits.length;
+        const unservedCountTotal = unservedUnits.length;
+
+        const allUnservedSelected =
+          unservedUnits.length > 0 &&
+          unservedUnits.every((u) =>
+            selectedWaiterItems.includes(u.unitKey)
+          );
+
+        const selectedCount = unservedUnits.filter((u) =>
+          selectedWaiterItems.includes(u.unitKey)
+        ).length;
+
+        const isExpanded = !!expandedTables[tableKey];
+
+        return (
+          <View style={styles.cashierTableCard}>
+            {/* HEADER */}
+            <Pressable
+              onPress={() =>
+                setExpandedTables((prev) => ({
+                  ...prev,
+                  [tableKey]: !prev[tableKey],
+                }))
+              }
+            >
+              <Text style={styles.cashierTableTitle}>
+                Masa {tableKey}
+              </Text>
+
+              <View style={styles.cashierSummaryRow}>
+                <Text style={styles.cashierSummaryText}>
+                  TOTAL: {totalCount} items
+                </Text>
+                <Text style={styles.cashierSummaryText}>
+                  SERVED: {servedCountTotal}
+                </Text>
+                <Text style={styles.cashierSummaryText}>
+                  UNSERVED: {unservedCountTotal}
+                </Text>
+              </View>
+
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: '#888',
+                  marginTop: 2,
+                }}
+              >
+                {isExpanded ? '▲ Gizle' : '▼ Detayları Göster'}
+              </Text>
+            </Pressable>
+
+            {/* DETAYLAR */}
+            {isExpanded && (
+              <>
+                {/* Select All / Clear All */}
+                <View style={styles.cashierSelectAllRow}>
+                  <Button
+                    title={
+                      allUnservedSelected ? 'Clear All' : 'Select All'
+                    }
+                    color="#0984e3"
+                    onPress={() => {
+                      const allKeys = unservedUnits.map(
+                        (u) => u.unitKey
+                      );
+
+                      if (allUnservedSelected) {
+                        setSelectedWaiterItems((prev) =>
+                          prev.filter((key) => !allKeys.includes(key))
+                        );
+                      } else {
+                        setSelectedWaiterItems((prev) => [
+                          ...prev,
+                          ...allKeys.filter(
+                            (k) => !prev.includes(k)
+                          ),
+                        ]);
+                      }
+                    }}
+                  />
+                </View>
+
+                {/* UNSERVED ITEMS */}
+                {unservedUnits.map((unit) => {
+                  const isSelected = selectedWaiterItems.includes(
+                    unit.unitKey
+                  );
+                 const kitchenStatus = unit.isDrink
+  ? '—'
+  : unit.status === 'READY'
+  ? 'READY'
+  : 'PENDING';
+
+const servedStatus = unit.isServed ? 'SERVED' : 'NOT SERVED';
+const paidStatus = 'PAID';
+
+
+                  return (
+                    <Pressable
+                      key={unit.unitKey}
+                      style={[
+                        styles.cashierOrderRow,
+                        styles.cashierOrderRowUnpaid, // hafif kırmızı
+                        isSelected &&
+                          styles.cashierOrderRowSelected,
+                      ]}
+                      onPress={() =>
+                        toggleWaiterItemSelection(unit.unitKey)
+                      }
+                    >
+                      <Text style={styles.cashierOrderText}>
+                        {unit.name} - TL {unit.price.toFixed(2)} [
+                        {kitchenStatus} | {servedStatus} | {paidStatus}]
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+
+                {/* SERVED ITEMS */}
+                {servedUnits.length > 0 && (
+                  <View style={{ marginTop: 6 }}>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: '#555',
+                        marginBottom: 2,
+                      }}
+                    >
+                      Served items:
+                    </Text>
+                    {servedUnits.map((unit) => {
+                      const kitchenStatus = unit.isDrink
+  ? '' // 🔥 içecekse READY/PENDING yok
+  : unit.status === 'READY'
+  ? 'READY'
+  : 'PENDING';
+
+const servedStatus = 'SERVED';
+const paidStatus = unit.isPaid ? 'PAID' : 'NOT PAID';
+
+
+                      return (
+                        <View
+                          key={unit.unitKey}
+                          style={[
+                            styles.cashierOrderRow,
+                            styles.cashierOrderRowPaid, // yeşil ton
+                          ]}
+                        >
+                          <Text style={styles.cashierOrderText}>
+                            {unit.name} - TL {unit.price.toFixed(2)} [
+                            {kitchenStatus} | {servedStatus} | {paidStatus}]
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {/* Selected & Serve */}
+                <View style={styles.cashierPayRow}>
+                  <Text style={styles.cashierSummaryText}>
+                    Selected: {selectedCount} items
+                  </Text>
+                  <Button
+                    title="Serve"
+                    color={selectedCount > 0 ? '#27ae60' : '#aaa'}
+                    onPress={() =>
+                      serveSelectedItemsForTable(tableKey)
+                    }
+                    disabled={selectedCount === 0}
+                  />
+                </View>
+              </>
+            )}
+          </View>
+        );
+      }}
+    />
+  </View>
+)}
+
+
+
 
 {mode === 'CASHIER' && (
   <View style={styles.cashierContainer}>
@@ -885,36 +1226,47 @@ function paySelectedItemsForTable(tableKey) {
       renderItem={({ item }) => {
         const [tableKey, tableOrders] = item;
 
-        // Bu masadaki tüm item’leri tek tek satır haline getir
         const unpaidUnits = [];
         const paidUnits = [];
 
-        tableOrders.forEach((order) => {
-          order.items.forEach((it, itemIndex) => {
-            const totalQty = it.quantity || 0;
-            const paidCount = it.paidCount || 0;
+    tableOrders.forEach((order) => {
+  order.items.forEach((it, itemIndex) => {
+    const totalQty = it.quantity || 0;
+    const servedCount = it.servedCount || 0;
+    const paidCount = it.paidCount || 0;
 
-            for (let unitIndex = 0; unitIndex < totalQty; unitIndex++) {
-              const unitKey = `${order.id}|${itemIndex}|${unitIndex}|${tableKey}`;
-              const baseUnit = {
-                unitKey,
-                orderId: order.id,
-                itemIndex,
-                unitIndex,
-                name: it.name,
-                price: it.price,
-                status: order.status,
-                note: it.note,
-              };
+    const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
+    const isDrink = menuDef?.category === 'DRINK';
 
-              if (unitIndex < paidCount) {
-                paidUnits.push(baseUnit);
-              } else {
-                unpaidUnits.push(baseUnit);
-              }
-            }
-          });
-        });
+    for (let unitIndex = 0; unitIndex < totalQty; unitIndex++) {
+      const unitKey = `${order.id}|${itemIndex}|${unitIndex}|${tableKey}`;
+
+      const isServed = unitIndex < servedCount;
+      const isPaid = unitIndex < paidCount;
+
+      const baseUnit = {
+        unitKey,
+        orderId: order.id,
+        itemIndex,
+        unitIndex,
+        name: it.name,
+        price: it.price,
+        status: order.status,
+        note: it.note,
+        isServed,
+        isPaid,
+        isDrink, // 🆕
+      };
+
+      if (isPaid) {
+        paidUnits.push(baseUnit);
+      } else {
+        unpaidUnits.push(baseUnit);
+      }
+    }
+  });
+});
+
 
         const totalAmount =
           unpaidUnits.reduce((s, u) => s + u.price, 0) +
@@ -934,7 +1286,7 @@ function paySelectedItemsForTable(tableKey) {
 
         return (
           <View style={styles.cashierTableCard}>
-            {/* HEADER: Masa + Totaller (accordion trigger) */}
+            {/* HEADER: Masa + Totaller (accordion) */}
             <Pressable
               onPress={() =>
                 setExpandedTables((prev) => ({
@@ -970,7 +1322,7 @@ function paySelectedItemsForTable(tableKey) {
               </Text>
             </Pressable>
 
-            {/* DETAYLAR: sadece expanded ise göster */}
+            {/* DETAYLAR: sadece expanded ise */}
             {isExpanded && (
               <>
                 {/* Select All / Clear All */}
@@ -982,12 +1334,10 @@ function paySelectedItemsForTable(tableKey) {
                       const allKeys = unpaidUnits.map((u) => u.unitKey);
 
                       if (allUnpaidSelected) {
-                        // Hepsi seçiliyse → bu masanın unpaid item’larını temizle
                         setSelectedCashierItems((prev) =>
                           prev.filter((key) => !allKeys.includes(key))
                         );
                       } else {
-                        // Hepsi seçili değilse → eksik olanları ekle
                         setSelectedCashierItems((prev) => [
                           ...prev,
                           ...allKeys.filter((k) => !prev.includes(k)),
@@ -997,17 +1347,25 @@ function paySelectedItemsForTable(tableKey) {
                   />
                 </View>
 
-                {/* UNPAID ITEM LİSTESİ (tane tane) */}
+                {/* UNPAID ITEMS */}
                 {unpaidUnits.map((unit) => {
-                  const isSelected = selectedCashierItems.includes(
-                    unit.unitKey
-                  );
+                  const isSelected = selectedCashierItems.includes(unit.unitKey);
+                  const kitchenStatus = unit.isDrink
+  ? ''
+  : unit.status === 'READY'
+  ? 'READY'
+  : 'PENDING';
+
+const servedStatus = unit.isServed ? 'SERVED' : 'NOT SERVED';
+const paidStatus = 'UNPAID';
+
+
                   return (
                     <Pressable
                       key={unit.unitKey}
                       style={[
                         styles.cashierOrderRow,
-                        styles.cashierOrderRowUnpaid, // hafif kırmızı ton
+                        styles.cashierOrderRowUnpaid,
                         isSelected && styles.cashierOrderRowSelected,
                       ]}
                       onPress={() =>
@@ -1016,13 +1374,13 @@ function paySelectedItemsForTable(tableKey) {
                     >
                       <Text style={styles.cashierOrderText}>
                         {unit.name} - TL {unit.price.toFixed(2)} [
-                        {unit.status}]
+                        {kitchenStatus} | {servedStatus} | {paidStatus}]
                       </Text>
                     </Pressable>
                   );
                 })}
 
-                {/* PAID item listesi */}
+                {/* PAID ITEMS */}
                 {paidUnits.length > 0 && (
                   <View style={{ marginTop: 6 }}>
                     <Text
@@ -1034,24 +1392,33 @@ function paySelectedItemsForTable(tableKey) {
                     >
                       Paid items:
                     </Text>
-                    {paidUnits.map((unit) => (
-                      <View
-                        key={unit.unitKey}
-                        style={[
-                          styles.cashierOrderRow,
-                          styles.cashierOrderRowPaid,
-                        ]}
-                      >
-                        <Text style={styles.cashierOrderText}>
-                          {unit.name} - TL {unit.price.toFixed(2)} [
-                          {unit.status}]
-                        </Text>
-                      </View>
-                    ))}
+                    {paidUnits.map((unit) => {
+                      const kitchenStatus =
+                        unit.status === 'READY' ? 'READY' : 'PENDING';
+                      const servedStatus = unit.isServed
+                        ? 'SERVED'
+                        : 'NOT SERVED';
+                      const paidStatus = 'PAID';
+
+                      return (
+                        <View
+                          key={unit.unitKey}
+                          style={[
+                            styles.cashierOrderRow,
+                            styles.cashierOrderRowPaid,
+                          ]}
+                        >
+                          <Text style={styles.cashierOrderText}>
+                            {unit.name} - TL {unit.price.toFixed(2)} [
+                            {kitchenStatus} | {servedStatus} | {paidStatus}]
+                          </Text>
+                        </View>
+                      );
+                    })}
                   </View>
                 )}
 
-                {/* Seçilenler ve Pay butonu */}
+                {/* Selected & Pay */}
                 <View style={styles.cashierPayRow}>
                   <Text style={styles.cashierSummaryText}>
                     Selected: TL {selectedAmount.toFixed(2)}
