@@ -33,7 +33,15 @@ const MENU_ITEMS = [
   { id: 'cheesecake', name: 'Cheesecake', price: 200, category: 'DESSERT' },
   { id: 'tiramisu', name: 'Tiramisu', price: 150, category: 'DESSERT' },
   { id: 'trilece', name: 'Trileçe', price: 150, category: 'DESSERT' },
+
+  // DRINK
+  { id: 'coke', name: 'Coca Cola', price: 70, category: 'DRINK' },
+  { id: 'fanta', name: 'Fanta', price: 70, category: 'DRINK' },
+  { id: 'ayran', name: 'Ayran', price: 50, category: 'DRINK' },
 ];
+
+  
+
 
 const POPULAR_IDS = [
   'kofte-ekmek',
@@ -48,7 +56,9 @@ const CATEGORIES = [
   { id: 'MEAT', label: 'Et Menü' },
   { id: 'TOAST', label: 'Tostlar' },
   { id: 'DESSERT', label: 'Tatlı & Kahve' },
+  { id: 'DRINK', label: 'Soğuk İçecekler' }, // 🆕
 ];
+
 
 const PRODUCT_IMAGES = {
   'kofte-ekmek': require('./assets/kofte-ekmek.jpg'),
@@ -66,7 +76,13 @@ const PRODUCT_IMAGES = {
   cheesecake: require('./assets/cheesecake.jpg'),
   tiramisu: require('./assets/tiramisu.jpg'),
   trilece: require('./assets/trilece.jpg'),
+
+  // 🧊 Soğuk içecekler
+  coke: require('./assets/drink-coke.jpg'),
+  fanta: require('./assets/drink-fanta.jpg'),
+  ayran: require('./assets/drink-ayran.jpg'),
 };
+
 
 const DRINK_OPTIONS = [
   { id: 'coke', label: 'Coca Cola', image: require('./assets/drink-coke.jpg') },
@@ -89,9 +105,8 @@ const SAUCE_IMAGES = {
 const ONION_IMAGE = require('./assets/onion.jpg');
 const NO_ONION_IMAGE = require('./assets/no-onion.jpg');
 
-function getTotalDrinks(dc) {
-  return (dc.coke || 0) + (dc.fanta || 0) + (dc.ayran || 0);
-}
+
+
 
 export default function App() {
   const [orders, setOrders] = useState([]);
@@ -99,7 +114,7 @@ export default function App() {
   const [mode, setMode] = useState('WAITER'); // 'WAITER' | 'KITCHEN'
   const [basket, setBasket] = useState([]); // current order being built
   const [selectedCategory, setSelectedCategory] = useState('POPULAR');
-
+const [selectedCashierItems, setSelectedCashierItems] = useState([]); 
   const [customModalVisible, setCustomModalVisible] = useState(false);
   const [customProduct, setCustomProduct] = useState(null);
 
@@ -107,11 +122,7 @@ export default function App() {
   const [onionNo, setOnionNo] = useState(0);
   const [quantity, setQuantity] = useState(1);
 
-  const [drinkCounts, setDrinkCounts] = useState({
-    coke: 0,
-    fanta: 0,
-    ayran: 0,
-  });
+
 
   const [sauces, setSauces] = useState({
     ketcap: false,
@@ -125,21 +136,25 @@ export default function App() {
   const [noteText, setNoteText] = useState('');
 
   // ---------- FILTERED MENU ----------
-  const filteredMenuItems = MENU_ITEMS.filter((item) => {
-    if (selectedCategory === 'POPULAR') {
-      return POPULAR_IDS.includes(item.id);
-    }
-    if (selectedCategory === 'MEAT') {
-      return item.category === 'MEAT';
-    }
-    if (selectedCategory === 'TOAST') {
-      return item.category === 'TOAST';
-    }
-    if (selectedCategory === 'DESSERT') {
-      return item.category === 'DESSERT';
-    }
-    return true;
-  });
+const filteredMenuItems = MENU_ITEMS.filter((item) => {
+  if (selectedCategory === 'POPULAR') {
+    return POPULAR_IDS.includes(item.id);
+  }
+  if (selectedCategory === 'MEAT') {
+    return item.category === 'MEAT';
+  }
+  if (selectedCategory === 'TOAST') {
+    return item.category === 'TOAST';
+  }
+  if (selectedCategory === 'DESSERT') {
+    return item.category === 'DESSERT';
+  }
+  if (selectedCategory === 'DRINK') {
+    return item.category === 'DRINK';
+  }
+  return true;
+});
+
 
   // ---------- BASKET & ORDER LOGIC ----------
   function addItemToBasket(item) {
@@ -162,48 +177,56 @@ export default function App() {
     setBasket([]);
   }
 
-  function submitOrder() {
-    if (!selectedTable) {
-      console.log('No table selected');
-      return;
-    }
-    if (basket.length === 0) {
-      console.log('Basket empty');
-      return;
-    }
-
-    const selectedItems = basket.map((item) => ({
-      name: item.name,
-      quantity: item.quantity,
-      onionYes: item.onionYes ?? 0,
-      onionNo: item.onionNo ?? 0,
-      drinks: item.drinks ?? { coke: 0, fanta: 0, ayran: 0 },
-      sauces: item.sauces ?? {
-        ketcap: false,
-        mayonez: false,
-        aci: false,
-      },
-      note: item.note ?? '',
-    }));
-
-    const orderNote = basket
-      .map((item) => item.note)
-      .filter(Boolean)
-      .join(' | ');
-
-    setOrders((currentOrders) => [
-      ...currentOrders,
-      {
-        id: Math.random().toString(),
-        tableId: selectedTable,
-        items: selectedItems,
-        status: 'PENDING',
-        note: orderNote,
-      },
-    ]);
-
-    clearBasket();
+function submitOrder() {
+  if (!selectedTable) {
+    setValidationMessage('Önce masa seçmelisiniz.');
+    setValidationModalVisible(true);
+    return;
   }
+  if (basket.length === 0) {
+    setValidationMessage('Sepet boş, ürün ekleyin.');
+    setValidationModalVisible(true);
+    return;
+  }
+
+const selectedItems = basket.map((item) => ({
+  id: item.id,
+  name: item.name,
+  price: item.price,
+  quantity: item.quantity,
+  onionYes: item.onionYes ?? 0,
+  onionNo: item.onionNo ?? 0,
+  sauces: item.sauces ?? {
+    ketcap: false,
+    mayonez: false,
+    aci: false,
+  },
+  note: item.note ?? '',
+  paidCount: 0, // 🆕 bu item’dan kaç adet ödendi
+}));
+
+
+
+  const orderNote = basket
+    .map((item) => item.note)
+    .filter(Boolean)
+    .join(' | ');
+
+  setOrders((currentOrders) => [
+    ...currentOrders,
+    {
+      id: Math.random().toString(),
+      tableId: selectedTable,
+      items: selectedItems,
+      status: 'PENDING',
+      note: orderNote,
+      paid: false,
+    },
+  ]);
+
+  clearBasket();
+}
+
 
   // WAITER: remove order (served)
   function deleteOrderHandler(id) {
@@ -220,13 +243,20 @@ export default function App() {
       )
     );
   }
+  function toggleOrderPaid(id) {
+  setOrders((currentOrders) =>
+    currentOrders.map((order) =>
+      order.id === id ? { ...order, paid: !order.paid } : order
+    )
+  );
+}
 
-  function handleProductPress(item) {
-  const needsDrink = ['kofte-ekmek', 'hamburger', 'patso', 'karisik-tost', 'waffle']
+function handleProductPress(item) {
+  const needsCustomization = ['kofte-ekmek', 'hamburger', 'patso', 'karisik-tost', 'waffle']
     .includes(item.id);
   const needsOnion = item.id === 'kofte-ekmek';
 
-  if (needsDrink || needsOnion) {
+  if (needsCustomization || needsOnion) {
     setCustomProduct(item);
     setQuantity(1);
 
@@ -240,14 +270,16 @@ export default function App() {
       setOnionNo(0);
     }
 
-    setDrinkCounts({ coke: 0, fanta: 0, ayran: 0 });
+    // setDrinkCounts(...) ARTIK YOK
     setSauces({ ketcap: false, mayonez: false, aci: false });
     setNoteText('');
     setCustomModalVisible(true);
   } else {
+    // içecekler buraya düşecek
     addItemToBasket(item);
   }
 }
+
 
   function handleCustomizationComplete() {
     if (!customProduct) return;
@@ -263,23 +295,15 @@ export default function App() {
       }
     }
 
-    // Toplam içecek sayısı quantity'den fazla olamaz
-    const usedDrinks = getTotalDrinks(drinkCounts);
-    if (usedDrinks > quantity) {
-      setValidationMessage('İçecek sayısı ürün adedini geçemez.');
-      setValidationModalVisible(true);
-      return;
-    }
+addItemToBasket({
+  ...customProduct,
+  quantity,
+  onionYes,
+  onionNo,
+  sauces,
+  note: noteText,
+});
 
-    addItemToBasket({
-      ...customProduct,
-      quantity,
-      onionYes,
-      onionNo,
-      drinks: drinkCounts,
-      sauces,
-      note: noteText,
-    });
 
     setCustomModalVisible(false);
   }
@@ -308,57 +332,119 @@ export default function App() {
     }
   }
 
-  function formatOrderText(order) {
-    if (!order.items || order.items.length === 0) {
-      return 'Empty order';
-    }
-
-    return order.items
-      .map((item) => {
-        const extras = [];
-
-        // Onion text
-        if (item.onionYes || item.onionNo) {
-          if (item.onionYes > 0) extras.push(`${item.onionYes} Soğanlı`);
-          if (item.onionNo > 0) extras.push(`${item.onionNo} Soğansız`);
-        }
-
-        // Drink text
-        if (item.drinks) {
-          const d = item.drinks;
-          const used =
-            (d.coke || 0) + (d.fanta || 0) + (d.ayran || 0);
-
-          if (d.coke > 0) extras.push(`${d.coke} Coca Cola`);
-          if (d.fanta > 0) extras.push(`${d.fanta} Fanta`);
-          if (d.ayran > 0) extras.push(`${d.ayran} Ayran`);
-
-          if (used < item.quantity) {
-            extras.push(`${item.quantity - used} İçecek Yok`);
-          }
-        }
-
-        // Sauce text
-        if (item.sauces) {
-          const s = item.sauces;
-          if (s.ketcap) extras.push('Ketçap');
-          if (s.mayonez) extras.push('Mayonez');
-          if (s.aci) extras.push('Acı Sos');
-        }
-
-        const baseText = `${item.quantity}x ${item.name}`;
-        if (extras.length === 0) return baseText;
-
-        return `${baseText} (${extras.join(', ')})`;
-      })
-      .join(', ');
+function formatOrderText(order, showDrinks = true) {
+  if (!order.items || order.items.length === 0) {
+    return 'Empty order';
   }
 
-  const totalItems = basket.reduce((sum, item) => sum + item.quantity, 0);
-  const totalPrice = basket.reduce(
-    (sum, item) => sum + item.quantity * item.price,
-    0
+  return order.items
+    .map((item) => {
+      const extras = [];
+
+      // Onion text
+      if (item.onionYes || item.onionNo) {
+        if (item.onionYes > 0) extras.push(`${item.onionYes} Soğanlı`);
+        if (item.onionNo > 0) extras.push(`${item.onionNo} Soğansız`);
+      }
+
+
+      // Sauce text
+      if (item.sauces) {
+        const s = item.sauces;
+        if (s.ketcap) extras.push('Ketçap');
+        if (s.mayonez) extras.push('Mayonez');
+        if (s.aci) extras.push('Acı Sos');
+      }
+
+      const baseText = `${item.quantity}x ${item.name}`;
+      if (extras.length === 0) return baseText;
+
+      return `${baseText} (${extras.join(', ')})`;
+    })
+    .join(', ');
+}
+
+
+const totalItems = basket.reduce((sum, item) => sum + item.quantity, 0);
+const totalPrice = basket.reduce(
+  (sum, item) => sum + item.quantity * item.price,
+  0
+);
+
+
+const tablesForCashier = Object.entries(
+  orders.reduce((acc, order) => {
+    const key = String(order.tableId ?? 'Unknown');
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(order);
+    return acc;
+  }, {})
+);
+function toggleCashierItemSelection(unitKey) {
+  setSelectedCashierItems((prev) =>
+    prev.includes(unitKey)
+      ? prev.filter((k) => k !== unitKey)
+      : [...prev, unitKey]
   );
+}
+
+function paySelectedItemsForTable(tableKey) {
+  setOrders((currentOrders) => {
+    // Seçilen satırlardan bu masaya ait olanları say
+    const toPayMap = {}; // key: "orderId|itemIndex" -> kaç adet ödenecek
+
+    selectedCashierItems.forEach((unitKey) => {
+      const [orderId, itemIndexStr, unitIndexStr, unitTableKey] =
+        unitKey.split('|');
+      if (unitTableKey !== String(tableKey)) return;
+      const itemIndex = parseInt(itemIndexStr, 10);
+      const mapKey = `${orderId}|${itemIndex}`;
+      toPayMap[mapKey] = (toPayMap[mapKey] || 0) + 1;
+    });
+
+    if (Object.keys(toPayMap).length === 0) {
+      return currentOrders;
+    }
+
+    const updated = currentOrders.map((order) => {
+      let changed = false;
+
+      const newItems = order.items.map((item, idx) => {
+        const mapKey = `${order.id}|${idx}`;
+        const addCount = toPayMap[mapKey] || 0;
+        if (!addCount) return item;
+
+        const prevPaid = item.paidCount || 0;
+        const totalQty = item.quantity || 0;
+        const newPaid = Math.min(prevPaid + addCount, totalQty);
+
+        if (newPaid !== prevPaid) {
+          changed = true;
+          return { ...item, paidCount: newPaid };
+        }
+        return item;
+      });
+
+      if (!changed) return order;
+      return { ...order, items: newItems };
+    });
+
+    return updated;
+  });
+
+  // Bu masaya ait seçili satırları temizle
+  setSelectedCashierItems((prev) =>
+    prev.filter((unitKey) => {
+      const parts = unitKey.split('|');
+      const unitTableKey = parts[3];
+      return unitTableKey !== String(tableKey);
+    })
+  );
+}
+
+
+// tablesForCashier: [ ['1', [order1, order2]], ['3', [order3]], ... ]
+
 
   // ------------------- UI -------------------
 
@@ -366,17 +452,23 @@ export default function App() {
     <View style={styles.appContainer}>
       {/* Mode switcher */}
       <View style={styles.modeSwitchContainer}>
-        <Button
-          title="Waiter Mode"
-          color={mode === 'WAITER' ? '#0acc2aff' : '#888'}
-          onPress={() => setMode('WAITER')}
-        />
-        <Button
-          title="Kitchen Mode"
-          color={mode === 'KITCHEN' ? '#0acc2aff' : '#888'}
-          onPress={() => setMode('KITCHEN')}
-        />
-      </View>
+  <Button
+    title="Waiter Mode"
+    color={mode === 'WAITER' ? '#0acc2aff' : '#888'}
+    onPress={() => setMode('WAITER')}
+  />
+  <Button
+    title="Kitchen Mode"
+    color={mode === 'KITCHEN' ? '#0acc2aff' : '#888'}
+    onPress={() => setMode('KITCHEN')}
+  />
+  <Button
+    title="Cashier Mode"
+    color={mode === 'CASHIER' ? '#0acc2aff' : '#888'}
+    onPress={() => setMode('CASHIER')}
+  />
+</View>
+
 
       {mode === 'WAITER' && (
         <View style={styles.waiterRoot}>
@@ -440,28 +532,44 @@ export default function App() {
                 {CATEGORIES.find((c) => c.id === selectedCategory)?.label ||
                   'Ürünler'}
               </Text>
-              <FlatList
-                data={filteredMenuItems}
-                keyExtractor={(item) => item.id}
-                numColumns={2}
-                contentContainerStyle={styles.menuList}
-                renderItem={({ item }) => (
-                  <Pressable
-                    style={styles.productCard}
-                    onPress={() => handleProductPress(item)}
-                  >
-                    <Image
-                      source={PRODUCT_IMAGES[item.id]}
-                      style={styles.productImage}
-                      resizeMode="cover"
-                    />
-                    <Text style={styles.productName}>{item.name}</Text>
-                    <Text style={styles.productPrice}>
-                      TL {item.price.toFixed(2)}
-                    </Text>
-                  </Pressable>
-                )}
-              />
+     <FlatList
+  data={filteredMenuItems}
+  keyExtractor={(item) => item.id}
+  numColumns={2}
+  contentContainerStyle={styles.menuList}
+  renderItem={({ item }) => {
+    // Sepette bu üründen kaç tane var?
+    const itemInBasket = basket.find((i) => i.id === item.id);
+    const itemCount = itemInBasket?.quantity ?? 0;
+
+    return (
+      <Pressable
+        style={styles.productCard}
+        onPress={() => handleProductPress(item)}
+      >
+        <View style={styles.productImageWrapper}>
+          <Image
+            source={PRODUCT_IMAGES[item.id]}
+            style={styles.productImage}
+            resizeMode="cover"
+          />
+          {/* Sadece içecekler için ve sepette varsa badge göster */}
+          {item.category === 'DRINK' && itemCount > 0 && (
+            <View style={styles.itemCounterBadge}>
+              <Text style={styles.itemCounterText}>{itemCount}</Text>
+            </View>
+          )}
+        </View>
+
+        <Text style={styles.productName}>{item.name}</Text>
+        <Text style={styles.productPrice}>
+          TL {item.price.toFixed(2)}
+        </Text>
+      </Pressable>
+    );
+  }}
+/>
+
             </View>
           </View>
 
@@ -608,81 +716,7 @@ export default function App() {
                 </>
               )}
 
-              {/* DRINKS SECTION */}
-              {(customProduct.id === 'kofte-ekmek' ||
-                customProduct.id === 'hamburger') && (
-                <>
-                  <Text style={styles.optionTitle}>İçecekler</Text>
-                  <Text style={styles.optionSubtitle}>
-                    Toplam içecek: {getTotalDrinks(drinkCounts)} /{' '}
-                    {quantity}{'\n'}
-                    Seçilmemiş kalanlar: İçecek Yok
-                  </Text>
-
-                  <View style={styles.drinkGrid}>
-                    {DRINK_OPTIONS.map((drink) => {
-                      const count = drinkCounts[drink.id] || 0;
-                      return (
-                        <View
-                          key={drink.id}
-                          style={styles.drinkCard}
-                        >
-                          <Image
-                            source={drink.image}
-                            style={styles.drinkImage}
-                            resizeMode="contain"
-                          />
-                          <Text style={styles.drinkLabel}>
-                            {drink.label}
-                          </Text>
-
-                          <View style={styles.drinkCountRow}>
-                            <Pressable
-                              style={styles.qtyButton}
-                              onPress={() =>
-                                setDrinkCounts((prev) => ({
-                                  ...prev,
-                                  [drink.id]:
-                                    prev[drink.id] > 0
-                                      ? prev[drink.id] - 1
-                                      : 0,
-                                }))
-                              }
-                            >
-                              <Text style={styles.qtyButtonText}>
-                                -
-                              </Text>
-                            </Pressable>
-
-                            <Text style={styles.qtyText}>
-                              {count}
-                            </Text>
-
-                            <Pressable
-                              style={styles.qtyButton}
-                              onPress={() =>
-                                setDrinkCounts((prev) => {
-                                  const used = getTotalDrinks(prev);
-                                  if (used >= quantity) return prev;
-                                  return {
-                                    ...prev,
-                                    [drink.id]:
-                                      (prev[drink.id] || 0) + 1,
-                                  };
-                                })
-                              }
-                            >
-                              <Text style={styles.qtyButtonText}>
-                                +
-                              </Text>
-                            </Pressable>
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                </>
-              )}
+         
 
               {/* SAUCE SECTION */}
               {(customProduct.id === 'patso' ||
@@ -796,11 +830,13 @@ export default function App() {
                 color="#c0392b"
                 onPress={clearBasket}
               />
-              <Button
-                title="Siparişi Gönder"
-                color="#27ae60"
-                onPress={submitOrder}
-              />
+          <Button
+  title="Siparişi Gönder"
+  color={selectedTable && basket.length > 0 ? '#27ae60' : '#aaa'}
+  onPress={submitOrder}
+  disabled={!selectedTable || basket.length === 0}
+/>
+
             </View>
           </View>
         </View>
@@ -821,7 +857,8 @@ export default function App() {
                 <GoalItem
                   id={order.id}
                   text={`Masa ${order.tableId}: ${formatOrderText(
-                    order
+                    order,
+                    false   // ❌ içecekleri gösterme
                   )} [${order.status}]`}
                   onDelete={markOrderReady}
                   note={order.note}
@@ -831,6 +868,153 @@ export default function App() {
           />
         </View>
       )}
+
+{mode === 'CASHIER' && (
+  <View style={styles.cashierContainer}>
+    <Text style={styles.sectionTitle}>Cashier Overview</Text>
+
+    {tablesForCashier.length === 0 && (
+      <Text style={styles.emptyText}>No orders yet.</Text>
+    )}
+
+    <FlatList
+      data={tablesForCashier}
+      keyExtractor={([tableKey]) => tableKey}
+      renderItem={({ item }) => {
+        const [tableKey, tableOrders] = item;
+
+        // Bu masadaki tüm item’leri tek tek satır haline getir
+        const unpaidUnits = [];
+        const paidUnits = [];
+
+        tableOrders.forEach((order) => {
+          order.items.forEach((it, itemIndex) => {
+            const totalQty = it.quantity || 0;
+            const paidCount = it.paidCount || 0;
+
+            for (let unitIndex = 0; unitIndex < totalQty; unitIndex++) {
+              const unitKey = `${order.id}|${itemIndex}|${unitIndex}|${tableKey}`;
+              const baseUnit = {
+                unitKey,
+                orderId: order.id,
+                itemIndex,
+                unitIndex,
+                name: it.name,
+                price: it.price,
+                status: order.status,
+                note: it.note,
+              };
+
+              if (unitIndex < paidCount) {
+                paidUnits.push(baseUnit);
+              } else {
+                unpaidUnits.push(baseUnit);
+              }
+            }
+          });
+        });
+
+        const totalAmount =
+          unpaidUnits.reduce((s, u) => s + u.price, 0) +
+          paidUnits.reduce((s, u) => s + u.price, 0);
+        const paidAmount = paidUnits.reduce((s, u) => s + u.price, 0);
+        const unpaidAmount = unpaidUnits.reduce((s, u) => s + u.price, 0);
+
+        const selectedAmount = unpaidUnits
+          .filter((u) => selectedCashierItems.includes(u.unitKey))
+          .reduce((s, u) => s + u.price, 0);
+
+        return (
+          <View style={styles.cashierTableCard}>
+            <Text style={styles.cashierTableTitle}>
+              Masa {tableKey}
+            </Text>
+
+            {/* Toplam / Ödenen / Ödenmeyen */}
+            <View style={styles.cashierSummaryRow}>
+              <Text style={styles.cashierSummaryText}>
+                TOTAL: TL {totalAmount.toFixed(2)}
+              </Text>
+              <Text style={styles.cashierSummaryText}>
+                PAID: TL {paidAmount.toFixed(2)}
+              </Text>
+              <Text style={styles.cashierSummaryText}>
+                UNPAID: TL {unpaidAmount.toFixed(2)}
+              </Text>
+            </View>
+
+            {/* UNPAID ITEM LİSTESİ (tane tane) */}
+         {unpaidUnits.map((unit) => {
+  const isSelected = selectedCashierItems.includes(unit.unitKey);
+  return (
+    <Pressable
+      key={unit.unitKey}
+      style={[
+        styles.cashierOrderRow,
+        styles.cashierOrderRowUnpaid,      // 🔥 hafif kırmızı ton
+        isSelected && styles.cashierOrderRowSelected,
+      ]}
+      onPress={() => toggleCashierItemSelection(unit.unitKey)}
+    >
+      <Text style={styles.cashierOrderText}>
+        {unit.name} - TL {unit.price.toFixed(2)} [{unit.status}]
+      </Text>
+    </Pressable>
+  );
+})}
+
+
+            {/* İstersen PAID satırlarını da gösterebilirsin */}
+            {paidUnits.length > 0 && (
+              <View style={{ marginTop: 6 }}>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: '#555',
+                    marginBottom: 2,
+                  }}
+                >
+                  Paid items:
+                </Text>
+                {paidUnits.map((unit) => (
+                  <View
+                    key={unit.unitKey}
+                    style={[
+                      styles.cashierOrderRow,
+                      styles.cashierOrderRowPaid,
+                    ]}
+                  >
+                    <Text style={styles.cashierOrderText}>
+                      {unit.name} - TL {unit.price.toFixed(2)} [
+                      {unit.status}]
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Seçilenler ve Pay butonu */}
+            <View style={styles.cashierPayRow}>
+              <Text style={styles.cashierSummaryText}>
+                Selected: TL {selectedAmount.toFixed(2)}
+              </Text>
+              <Button
+                title="Pay"
+                color={selectedAmount > 0 ? '#27ae60' : '#aaa'}
+                onPress={() => paySelectedItemsForTable(tableKey)}
+                disabled={selectedAmount === 0}
+              />
+            </View>
+          </View>
+        );
+      }}
+    />
+  </View>
+)}
+
+
+
+
     </View>
   );
 }
@@ -1022,7 +1206,7 @@ const styles = StyleSheet.create({
     top: -71,
     left: 10,
     right: 10,
-    bottom: 80,
+    bottom: 260,
     backgroundColor: '#ffffff',
     borderRadius: 20,
     padding: 14,
@@ -1297,4 +1481,101 @@ const styles = StyleSheet.create({
     color: '#333',
     textAlign: 'center',
   },
+    // ----- CASHIER -----
+  cashierContainer: {
+    flex: 1,
+    marginTop: 16,
+  },
+
+  cashierTableCard: {
+    marginBottom: 10,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    backgroundColor: '#fafafa',
+  },
+
+  cashierTableTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6,
+    color: '#333',
+  },
+
+  cashierOrderRow: {
+    paddingVertical: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+
+  cashierOrderRowPaid: {
+    backgroundColor: '#d6f5dd',
+  },
+
+  cashierOrderText: {
+    fontSize: 13,
+    color: '#333',
+  },
+
+  cashierOrderStatus: {
+    fontSize: 12,
+    color: '#555',
+    marginTop: 2,
+  },
+
+  cashierOrderNote: {
+    fontSize: 12,
+    color: '#777',
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+  productImageWrapper: {
+    position: 'relative',
+  },
+
+  itemCounterBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#27ae60',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+
+  itemCounterText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  cashierSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+
+  cashierSummaryText: {
+    fontSize: 12,
+    color: '#333',
+    fontWeight: '600',
+  },
+
+  cashierOrderRowSelected: {
+    backgroundColor: '#ffeaa7',
+  },
+
+  cashierPayRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+cashierOrderRowUnpaid: {
+  backgroundColor: '#e19292ff',  // çok hafif kırmızı
+},
+
 });
