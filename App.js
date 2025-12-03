@@ -302,9 +302,34 @@ function toggleKitchenItemSelection(unitKey) {
   setSelectedKitchenItems((prev) =>
     prev.includes(unitKey)
       ? prev.filter((k) => k !== unitKey)
-      : [...prev, k]
+      : [...prev, unitKey]
   );
 }
+
+
+
+function getBasketCountById(id) {
+  const found = basket.find((i) => i.id === id);
+  return found ? found.quantity : 0;
+}
+
+function decrementItemInBasketById(id) {
+  setBasket((current) => {
+    const existing = current.find((i) => i.id === id);
+    if (!existing) return current;
+
+    if (existing.quantity <= 1) {
+      // son 1 taneyse tamamen çıkar
+      return current.filter((i) => i.id !== id);
+    }
+
+    // 1 azalt
+    return current.map((i) =>
+      i.id === id ? { ...i, quantity: i.quantity - 1 } : i
+    );
+  });
+}
+
 
 function readySelectedItemsForTable(tableKey) {
   setOrders((currentOrders) => {
@@ -697,43 +722,59 @@ const tablesForCashier = Object.entries(
                 {CATEGORIES.find((c) => c.id === selectedCategory)?.label ||
                   'Ürünler'}
               </Text>
-     <FlatList
+
+<FlatList
   data={filteredMenuItems}
   keyExtractor={(item) => item.id}
   numColumns={2}
   contentContainerStyle={styles.menuList}
   renderItem={({ item }) => {
-    // Sepette bu üründen kaç tane var?
-    const itemInBasket = basket.find((i) => i.id === item.id);
-    const itemCount = itemInBasket?.quantity ?? 0;
+    const countInBasket = getBasketCountById(item.id);
+    const isDrink = item.category === 'DRINK';
 
     return (
-      <Pressable
-        style={styles.productCard}
-        onPress={() => handleProductPress(item)}
-      >
-        <View style={styles.productImageWrapper}>
+      <View style={styles.productCardWrapper}>
+        <Pressable
+          style={styles.productCard}
+          onPress={() => handleProductPress(item)}
+        >
           <Image
             source={PRODUCT_IMAGES[item.id]}
             style={styles.productImage}
             resizeMode="cover"
           />
-          {/* Sadece içecekler için ve sepette varsa badge göster */}
-          {item.category === 'DRINK' && itemCount > 0 && (
-            <View style={styles.itemCounterBadge}>
-              <Text style={styles.itemCounterText}>{itemCount}</Text>
+
+          <Text style={styles.productName}>{item.name}</Text>
+          <Text style={styles.productPrice}>
+            TL {item.price.toFixed(2)}
+          </Text>
+
+          {/* 🔥 DRINK ise altına - sayı + counter koy */}
+          {isDrink && (
+            <View style={styles.drinkInlineCounter}>
+              <Pressable
+                style={styles.qtyButton}
+                onPress={() => decrementItemInBasketById(item.id)}
+              >
+                <Text style={styles.qtyButtonText}>-</Text>
+              </Pressable>
+
+              <Text style={styles.qtyText}>{countInBasket}</Text>
+
+              <Pressable
+                style={styles.qtyButton}
+                onPress={() => handleProductPress(item)}
+              >
+                <Text style={styles.qtyButtonText}>+</Text>
+              </Pressable>
             </View>
           )}
-        </View>
-
-        <Text style={styles.productName}>{item.name}</Text>
-        <Text style={styles.productPrice}>
-          TL {item.price.toFixed(2)}
-        </Text>
-      </Pressable>
+        </Pressable>
+      </View>
     );
   }}
 />
+
 
             </View>
           </View>
@@ -1268,46 +1309,45 @@ const tablesForCashier = Object.entries(
         const unservedUnits = [];
         const servedUnits = [];
 
-      tableOrders.forEach((order) => {
-  order.items.forEach((it, itemIndex) => {
-    const totalQty = it.quantity || 0;
-    const servedCount = it.servedCount || 0;
-    const paidCount = it.paidCount || 0;
+        tableOrders.forEach((order) => {
+          order.items.forEach((it, itemIndex) => {
+            const totalQty = it.quantity || 0;
+            const servedCount = it.servedCount || 0;
+            const paidCount = it.paidCount || 0;
 
-    // 🔥 Menüden kategoriyi bul
-    const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
-    const isDrink = menuDef?.category === 'DRINK';
+            // Menüden kategori çek → içecek mi?
+            const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
+            const isDrink = menuDef?.category === 'DRINK';
 
-    for (let unitIndex = 0; unitIndex < totalQty; unitIndex++) {
-      const unitKey = `${order.id}|${itemIndex}|${unitIndex}|${tableKey}`;
-      const isServed = unitIndex < servedCount;
-      const isPaid = unitIndex < paidCount;
+            for (let unitIndex = 0; unitIndex < totalQty; unitIndex++) {
+              const unitKey = `${order.id}|${itemIndex}|${unitIndex}|${tableKey}`;
 
-      const baseUnit = {
-        unitKey,
-        orderId: order.id,
-        itemIndex,
-        unitIndex,
-        name: it.name,
-        price: it.price,
-        status: order.status,
-        note: it.note,
-        isServed,
-        isPaid,
-        isDrink, // 🆕
-      };
+              const isServed = unitIndex < servedCount;
+              const isPaid = unitIndex < paidCount; // 🔥 SADECE paidCount’a bağlı
 
-      if (isServed) {
-        servedUnits.push(baseUnit);
-      } else {
-        unservedUnits.push(baseUnit);
-      }
-    }
-  });
-});
+              const baseUnit = {
+                unitKey,
+                orderId: order.id,
+                itemIndex,
+                unitIndex,
+                name: it.name,
+                price: it.price,
+                status: order.status,
+                note: it.note,
+                isDrink,
+                isServed,
+                isPaid,
+              };
 
+              if (isServed) {
+                servedUnits.push(baseUnit);
+              } else {
+                unservedUnits.push(baseUnit);
+              }
+            }
+          });
+        });
 
-        // 🔥 Artık TL değil, adet sayıyoruz
         const totalCount = unservedUnits.length + servedUnits.length;
         const servedCountTotal = servedUnits.length;
         const unservedCountTotal = unservedUnits.length;
@@ -1398,22 +1438,22 @@ const tablesForCashier = Object.entries(
                   const isSelected = selectedWaiterItems.includes(
                     unit.unitKey
                   );
-                 const kitchenStatus = unit.isDrink
-  ? '—'
-  : unit.status === 'READY'
-  ? 'READY'
-  : 'PENDING';
 
-const servedStatus = unit.isServed ? 'SERVED' : 'NOT SERVED';
-const paidStatus = 'PAID';
+                  const kitchenStatus = unit.isDrink
+                    ? '—' // içecek için READY/PENDING yok
+                    : unit.status === 'READY'
+                    ? 'READY'
+                    : 'PENDING';
 
+                  const servedStatus = 'NOT SERVED';
+                  const paidStatus = unit.isPaid ? 'PAID' : 'NOT PAID'; // ✅ sadece unit.isPaid
 
                   return (
                     <Pressable
                       key={unit.unitKey}
                       style={[
                         styles.cashierOrderRow,
-                        styles.cashierOrderRowUnpaid, // hafif kırmızı
+                        styles.cashierOrderRowUnpaid,
                         isSelected &&
                           styles.cashierOrderRowSelected,
                       ]}
@@ -1443,21 +1483,22 @@ const paidStatus = 'PAID';
                     </Text>
                     {servedUnits.map((unit) => {
                       const kitchenStatus = unit.isDrink
-  ? '' // 🔥 içecekse READY/PENDING yok
-  : unit.status === 'READY'
-  ? 'READY'
-  : 'PENDING';
+                        ? '—'
+                        : unit.status === 'READY'
+                        ? 'READY'
+                        : 'PENDING';
 
-const servedStatus = 'SERVED';
-const paidStatus = unit.isPaid ? 'PAID' : 'NOT PAID';
-
+                      const servedStatus = 'SERVED';
+                      const paidStatus = unit.isPaid
+                        ? 'PAID'
+                        : 'NOT PAID'; // ✅ burada da aynı
 
                       return (
                         <View
                           key={unit.unitKey}
                           style={[
                             styles.cashierOrderRow,
-                            styles.cashierOrderRowPaid, // yeşil ton
+                            styles.cashierOrderRowPaid,
                           ]}
                         >
                           <Text style={styles.cashierOrderText}>
@@ -1492,7 +1533,6 @@ const paidStatus = unit.isPaid ? 'PAID' : 'NOT PAID';
     />
   </View>
 )}
-
 
 
 
@@ -2329,6 +2369,51 @@ cashierPayRow: {
   flexDirection: 'row',
   justifyContent: 'space-between',
   alignItems: 'center',
+},
+productCard: {
+  backgroundColor: '#ffffff',
+  borderRadius: 12,
+  borderWidth: 1,
+  borderColor: '#eee',
+  padding: 8,
+  // width: '48%',  // ← bunu kaldırabilirsin
+},
+productCardWrapper: {
+  width: '48%',
+  marginBottom: 12,
+},
+
+productImageWrapper: {
+  position: 'relative',
+},
+
+productBadge: {
+  position: 'absolute',
+  top: 6,
+  right: 6,
+  backgroundColor: 'rgba(231, 76, 60, 0.9)', // hafif kırmızı
+  borderRadius: 12,
+  paddingHorizontal: 8,
+  paddingVertical: 2,
+},
+
+productBadgeText: {
+  color: '#fff',
+  fontSize: 12,
+  fontWeight: '700',
+},
+
+productCardWrapper: {
+  width: '48%',
+  marginBottom: 12,
+},
+
+drinkInlineCounter: {
+  flexDirection: 'row',
+  justifyContent: 'center',
+  alignItems: 'center',
+  marginTop: 6,
+  gap: 12,
 },
 
 });
