@@ -115,7 +115,9 @@ export default function App() {
 const [mode, setMode] = useState('ORDER'); // eski 'WAITER' yerine
 const [selectedCashierItems, setSelectedCashierItems] = useState([]);
 const [selectedWaiterItems, setSelectedWaiterItems] = useState([]);
+const [selectedKitchenItems, setSelectedKitchenItems] = useState([]);
 const [expandedTables, setExpandedTables] = useState({});
+
 
   
   const [basket, setBasket] = useState([]); // current order being built
@@ -295,6 +297,71 @@ function handleProductPress(item) {
     addItemToBasket(item);
   }
 }
+
+function toggleKitchenItemSelection(unitKey) {
+  setSelectedKitchenItems((prev) =>
+    prev.includes(unitKey)
+      ? prev.filter((k) => k !== unitKey)
+      : [...prev, k]
+  );
+}
+
+function readySelectedItemsForTable(tableKey) {
+  setOrders((currentOrders) => {
+    // Bu masaya ait seçili unitKey'ler
+    const selectedForTable = selectedKitchenItems.filter((k) =>
+      k.endsWith(`|${tableKey}`)
+    );
+    if (selectedForTable.length === 0) return currentOrders;
+
+    const updated = currentOrders.map((order) => {
+      const orderSelected = selectedForTable.filter((k) =>
+        k.startsWith(order.id + '|')
+      );
+      if (orderSelected.length === 0) return order;
+
+      const newItems = order.items.map((it, itemIndex) => {
+        const itemKeys = orderSelected.filter((k) => {
+          const parts = k.split('|');
+          return parts[1] === String(itemIndex);
+        });
+        if (itemKeys.length === 0) return it;
+
+        const qty = it.quantity || 0;
+        const currentReady = it.readyCount || 0;
+        const added = itemKeys.length;
+        const newReady = Math.min(qty, currentReady + added);
+
+        return {
+          ...it,
+          readyCount: newReady,
+        };
+      });
+
+      // Tüm yemekler (drink hariç) ready mi diye order.status güncelle
+      const allFoodReady = newItems
+        .filter((it) => {
+          const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
+          return menuDef?.category !== 'DRINK';
+        })
+        .every((it) => (it.readyCount || 0) >= (it.quantity || 0));
+
+      return {
+        ...order,
+        items: newItems,
+        status: allFoodReady ? 'READY' : 'PENDING',
+      };
+    });
+
+    return updated;
+  });
+
+  // Bu masaya ait seçili item'ları temizle
+  setSelectedKitchenItems((prev) =>
+    prev.filter((k) => !k.endsWith(`|${tableKey}`))
+  );
+}
+
 
 
   function handleCustomizationComplete() {
@@ -940,32 +1007,249 @@ const tablesForCashier = Object.entries(
         </View>
       )}
 
-      {mode === 'KITCHEN' && (
-        <View style={styles.listContainer}>
-          <Text style={styles.sectionTitle}>Kitchen Orders</Text>
-          {orders.length === 0 && (
-            <Text style={styles.emptyText}>No orders yet.</Text>
-          )}
-          <FlatList
-            data={orders}
-            keyExtractor={(item) => item.id}
-            renderItem={(itemData) => {
-              const order = itemData.item;
-              return (
-                <GoalItem
-                  id={order.id}
-                  text={`Masa ${order.tableId}: ${formatOrderText(
-                    order,
-                    false   // ❌ içecekleri gösterme
-                  )} [${order.status}]`}
-                  onDelete={markOrderReady}
-                  note={order.note}
-                />
-              );
-            }}
-          />
-        </View>
-      )}
+ {mode === 'KITCHEN' && (
+  <View style={styles.cashierContainer}>
+    <Text style={styles.sectionTitle}>Kitchen Overview</Text>
+
+    {tablesForCashier.length === 0 && (
+      <Text style={styles.emptyText}>No orders yet.</Text>
+    )}
+
+    <FlatList
+      data={tablesForCashier}
+      keyExtractor={([tableKey]) => tableKey}
+      renderItem={({ item }) => {
+        const [tableKey, tableOrders] = item;
+
+        const waitingUnits = [];
+        const readyUnits = [];
+
+        tableOrders.forEach((order) => {
+          order.items.forEach((it, itemIndex) => {
+            const totalQty = it.quantity || 0;
+            const readyCount = it.readyCount || 0;
+            const servedCount = it.servedCount || 0;
+            const paidCount = it.paidCount || 0;
+
+            // 🔥 Mutfak içecekleri görmesin
+            const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
+            const isDrink = menuDef?.category === 'DRINK';
+            if (isDrink) return;
+
+            for (let unitIndex = 0; unitIndex < totalQty; unitIndex++) {
+              const unitKey = `${order.id}|${itemIndex}|${unitIndex}|${tableKey}`;
+
+              const isReady = unitIndex < readyCount;
+              const isServed = unitIndex < servedCount;
+              const isPaid = unitIndex < paidCount;
+
+              const baseUnit = {
+                unitKey,
+                orderId: order.id,
+                itemIndex,
+                unitIndex,
+                name: it.name,
+                price: it.price,
+                status: order.status,
+                note: it.note,
+                isReady,
+                isServed,
+                isPaid,
+              };
+
+              if (isReady) {
+                readyUnits.push(baseUnit);
+              } else {
+                waitingUnits.push(baseUnit);
+              }
+            }
+          });
+        });
+
+        if (waitingUnits.length === 0 && readyUnits.length === 0) {
+          return null;
+        }
+
+        const totalCount = waitingUnits.length + readyUnits.length;
+        const readyCountTotal = readyUnits.length;
+        const waitingCountTotal = waitingUnits.length;
+
+        const allWaitingSelected =
+          waitingUnits.length > 0 &&
+          waitingUnits.every((u) =>
+            selectedKitchenItems.includes(u.unitKey)
+          );
+
+        const selectedCount = waitingUnits.filter((u) =>
+          selectedKitchenItems.includes(u.unitKey)
+        ).length;
+
+        const isExpanded = !!expandedTables[tableKey];
+
+        return (
+          <View style={styles.cashierTableCard}>
+            {/* HEADER - Masa & adetler (accordion) */}
+            <Pressable
+              onPress={() =>
+                setExpandedTables((prev) => ({
+                  ...prev,
+                  [tableKey]: !prev[tableKey],
+                }))
+              }
+            >
+              <Text style={styles.cashierTableTitle}>
+                Masa {tableKey}
+              </Text>
+
+              <View style={styles.cashierSummaryRow}>
+                <Text style={styles.cashierSummaryText}>
+                  TOTAL: {totalCount} items
+                </Text>
+                <Text style={styles.cashierSummaryText}>
+                  READY: {readyCountTotal}
+                </Text>
+                <Text style={styles.cashierSummaryText}>
+                  NOT READY: {waitingCountTotal}
+                </Text>
+              </View>
+
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: '#888',
+                  marginTop: 2,
+                }}
+              >
+                {isExpanded ? '▲ Gizle' : '▼ Detayları Göster'}
+              </Text>
+            </Pressable>
+
+            {/* DETAYLAR sadece expanded ise */}
+            {isExpanded && (
+              <>
+                {/* Select All / Clear All */}
+                <View style={styles.cashierSelectAllRow}>
+                  <Button
+                    title={allWaitingSelected ? 'Clear All' : 'Select All'}
+                    color="#0984e3"
+                    onPress={() => {
+                      const allKeys = waitingUnits.map(
+                        (u) => u.unitKey
+                      );
+
+                      if (allWaitingSelected) {
+                        setSelectedKitchenItems((prev) =>
+                          prev.filter((key) => !allKeys.includes(key))
+                        );
+                      } else {
+                        setSelectedKitchenItems((prev) => [
+                          ...prev,
+                          ...allKeys.filter(
+                            (k) => !prev.includes(k)
+                          ),
+                        ]);
+                      }
+                    }}
+                  />
+                </View>
+
+                {/* NOT READY ITEMS */}
+                {waitingUnits.map((unit) => {
+                  const isSelected =
+                    selectedKitchenItems.includes(unit.unitKey);
+
+                  const kitchenStatus = unit.isReady
+                    ? 'READY'
+                    : 'PENDING';
+                  const servedStatus = unit.isServed
+                    ? 'SERVED'
+                    : 'NOT SERVED';
+                  const paidStatus = unit.isPaid
+                    ? 'PAID'
+                    : 'NOT PAID';
+
+                  return (
+                    <Pressable
+                      key={unit.unitKey}
+                      style={[
+                        styles.cashierOrderRow,
+                        styles.cashierOrderRowUnpaid, // hafif kırmızı
+                        isSelected && styles.cashierOrderRowSelected,
+                      ]}
+                      onPress={() =>
+                        toggleKitchenItemSelection(unit.unitKey)
+                      }
+                    >
+                      <Text style={styles.cashierOrderText}>
+                        {unit.name} - TL {unit.price.toFixed(2)} [
+                        {kitchenStatus} | {servedStatus} | {paidStatus}]
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+
+                {/* READY ITEMS */}
+                {readyUnits.length > 0 && (
+                  <View style={{ marginTop: 6 }}>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: '#555',
+                        marginBottom: 2,
+                      }}
+                    >
+                      Ready items:
+                    </Text>
+                    {readyUnits.map((unit) => {
+                      const kitchenStatus = 'READY';
+                      const servedStatus = unit.isServed
+                        ? 'SERVED'
+                        : 'NOT SERVED';
+                      const paidStatus = unit.isPaid
+                        ? 'PAID'
+                        : 'NOT PAID';
+
+                      return (
+                        <View
+                          key={unit.unitKey}
+                          style={[
+                            styles.cashierOrderRow,
+                            styles.cashierOrderRowPaid, // yeşil ton
+                          ]}
+                        >
+                          <Text style={styles.cashierOrderText}>
+                            {unit.name} - TL {unit.price.toFixed(2)} [
+                            {kitchenStatus} | {servedStatus} | {paidStatus}]
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {/* Selected & Mark Ready */}
+                <View style={styles.cashierPayRow}>
+                  <Text style={styles.cashierSummaryText}>
+                    Selected: {selectedCount} items
+                  </Text>
+                  <Button
+                    title="Mark Ready"
+                    color={selectedCount > 0 ? '#27ae60' : '#aaa'}
+                    onPress={() =>
+                      readySelectedItemsForTable(tableKey)
+                    }
+                    disabled={selectedCount === 0}
+                  />
+                </View>
+              </>
+            )}
+          </View>
+        );
+      }}
+    />
+  </View>
+)}
+
 
 {mode === 'WAITER' && (
   <View style={styles.cashierContainer}>
