@@ -117,6 +117,7 @@ export default function App() {
 const [selectedCashierItems, setSelectedCashierItems] = useState([]); 
   const [customModalVisible, setCustomModalVisible] = useState(false);
   const [customProduct, setCustomProduct] = useState(null);
+const [expandedTables, setExpandedTables] = useState({});
 
   const [onionYes, setOnionYes] = useState(1);
   const [onionNo, setOnionNo] = useState(0);
@@ -869,6 +870,7 @@ function paySelectedItemsForTable(tableKey) {
         </View>
       )}
 
+
 {mode === 'CASHIER' && (
   <View style={styles.cashierContainer}>
     <Text style={styles.sectionTitle}>Cashier Overview</Text>
@@ -920,97 +922,156 @@ function paySelectedItemsForTable(tableKey) {
         const paidAmount = paidUnits.reduce((s, u) => s + u.price, 0);
         const unpaidAmount = unpaidUnits.reduce((s, u) => s + u.price, 0);
 
+        const allUnpaidSelected =
+          unpaidUnits.length > 0 &&
+          unpaidUnits.every((u) => selectedCashierItems.includes(u.unitKey));
+
         const selectedAmount = unpaidUnits
           .filter((u) => selectedCashierItems.includes(u.unitKey))
           .reduce((s, u) => s + u.price, 0);
 
+        const isExpanded = !!expandedTables[tableKey];
+
         return (
           <View style={styles.cashierTableCard}>
-            <Text style={styles.cashierTableTitle}>
-              Masa {tableKey}
-            </Text>
-
-            {/* Toplam / Ödenen / Ödenmeyen */}
-            <View style={styles.cashierSummaryRow}>
-              <Text style={styles.cashierSummaryText}>
-                TOTAL: TL {totalAmount.toFixed(2)}
+            {/* HEADER: Masa + Totaller (accordion trigger) */}
+            <Pressable
+              onPress={() =>
+                setExpandedTables((prev) => ({
+                  ...prev,
+                  [tableKey]: !prev[tableKey],
+                }))
+              }
+            >
+              <Text style={styles.cashierTableTitle}>
+                Masa {tableKey}
               </Text>
-              <Text style={styles.cashierSummaryText}>
-                PAID: TL {paidAmount.toFixed(2)}
-              </Text>
-              <Text style={styles.cashierSummaryText}>
-                UNPAID: TL {unpaidAmount.toFixed(2)}
-              </Text>
-            </View>
 
-            {/* UNPAID ITEM LİSTESİ (tane tane) */}
-         {unpaidUnits.map((unit) => {
-  const isSelected = selectedCashierItems.includes(unit.unitKey);
-  return (
-    <Pressable
-      key={unit.unitKey}
-      style={[
-        styles.cashierOrderRow,
-        styles.cashierOrderRowUnpaid,      // 🔥 hafif kırmızı ton
-        isSelected && styles.cashierOrderRowSelected,
-      ]}
-      onPress={() => toggleCashierItemSelection(unit.unitKey)}
-    >
-      <Text style={styles.cashierOrderText}>
-        {unit.name} - TL {unit.price.toFixed(2)} [{unit.status}]
-      </Text>
-    </Pressable>
-  );
-})}
-
-
-            {/* İstersen PAID satırlarını da gösterebilirsin */}
-            {paidUnits.length > 0 && (
-              <View style={{ marginTop: 6 }}>
-                <Text
-                  style={{
-                    fontSize: 12,
-                    color: '#555',
-                    marginBottom: 2,
-                  }}
-                >
-                  Paid items:
+              <View style={styles.cashierSummaryRow}>
+                <Text style={styles.cashierSummaryText}>
+                  TOTAL: TL {totalAmount.toFixed(2)}
                 </Text>
-                {paidUnits.map((unit) => (
-                  <View
-                    key={unit.unitKey}
-                    style={[
-                      styles.cashierOrderRow,
-                      styles.cashierOrderRowPaid,
-                    ]}
-                  >
-                    <Text style={styles.cashierOrderText}>
-                      {unit.name} - TL {unit.price.toFixed(2)} [
-                      {unit.status}]
-                    </Text>
-                  </View>
-                ))}
+                <Text style={styles.cashierSummaryText}>
+                  PAID: TL {paidAmount.toFixed(2)}
+                </Text>
+                <Text style={styles.cashierSummaryText}>
+                  UNPAID: TL {unpaidAmount.toFixed(2)}
+                </Text>
               </View>
-            )}
 
-            {/* Seçilenler ve Pay butonu */}
-            <View style={styles.cashierPayRow}>
-              <Text style={styles.cashierSummaryText}>
-                Selected: TL {selectedAmount.toFixed(2)}
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: '#888',
+                  marginTop: 2,
+                }}
+              >
+                {isExpanded ? '▲ Gizle' : '▼ Detayları Göster'}
               </Text>
-              <Button
-                title="Pay"
-                color={selectedAmount > 0 ? '#27ae60' : '#aaa'}
-                onPress={() => paySelectedItemsForTable(tableKey)}
-                disabled={selectedAmount === 0}
-              />
-            </View>
+            </Pressable>
+
+            {/* DETAYLAR: sadece expanded ise göster */}
+            {isExpanded && (
+              <>
+                {/* Select All / Clear All */}
+                <View style={styles.cashierSelectAllRow}>
+                  <Button
+                    title={allUnpaidSelected ? 'Clear All' : 'Select All'}
+                    color="#0984e3"
+                    onPress={() => {
+                      const allKeys = unpaidUnits.map((u) => u.unitKey);
+
+                      if (allUnpaidSelected) {
+                        // Hepsi seçiliyse → bu masanın unpaid item’larını temizle
+                        setSelectedCashierItems((prev) =>
+                          prev.filter((key) => !allKeys.includes(key))
+                        );
+                      } else {
+                        // Hepsi seçili değilse → eksik olanları ekle
+                        setSelectedCashierItems((prev) => [
+                          ...prev,
+                          ...allKeys.filter((k) => !prev.includes(k)),
+                        ]);
+                      }
+                    }}
+                  />
+                </View>
+
+                {/* UNPAID ITEM LİSTESİ (tane tane) */}
+                {unpaidUnits.map((unit) => {
+                  const isSelected = selectedCashierItems.includes(
+                    unit.unitKey
+                  );
+                  return (
+                    <Pressable
+                      key={unit.unitKey}
+                      style={[
+                        styles.cashierOrderRow,
+                        styles.cashierOrderRowUnpaid, // hafif kırmızı ton
+                        isSelected && styles.cashierOrderRowSelected,
+                      ]}
+                      onPress={() =>
+                        toggleCashierItemSelection(unit.unitKey)
+                      }
+                    >
+                      <Text style={styles.cashierOrderText}>
+                        {unit.name} - TL {unit.price.toFixed(2)} [
+                        {unit.status}]
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+
+                {/* PAID item listesi */}
+                {paidUnits.length > 0 && (
+                  <View style={{ marginTop: 6 }}>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: '#555',
+                        marginBottom: 2,
+                      }}
+                    >
+                      Paid items:
+                    </Text>
+                    {paidUnits.map((unit) => (
+                      <View
+                        key={unit.unitKey}
+                        style={[
+                          styles.cashierOrderRow,
+                          styles.cashierOrderRowPaid,
+                        ]}
+                      >
+                        <Text style={styles.cashierOrderText}>
+                          {unit.name} - TL {unit.price.toFixed(2)} [
+                          {unit.status}]
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Seçilenler ve Pay butonu */}
+                <View style={styles.cashierPayRow}>
+                  <Text style={styles.cashierSummaryText}>
+                    Selected: TL {selectedAmount.toFixed(2)}
+                  </Text>
+                  <Button
+                    title="Pay"
+                    color={selectedAmount > 0 ? '#27ae60' : '#aaa'}
+                    onPress={() => paySelectedItemsForTable(tableKey)}
+                    disabled={selectedAmount === 0}
+                  />
+                </View>
+              </>
+            )}
           </View>
         );
       }}
     />
   </View>
 )}
+
 
 
 
@@ -1576,6 +1637,47 @@ const styles = StyleSheet.create({
   },
 cashierOrderRowUnpaid: {
   backgroundColor: '#e19292ff',  // çok hafif kırmızı
+},
+cashierSelectAllRow: {
+  marginTop: 6,
+  marginBottom: 4,
+  alignItems: 'flex-start',
+},
+
+cashierOrderRowUnpaid: {
+  backgroundColor: '#ffefef', // hafif kırmızı
+},
+
+cashierOrderRowSelected: {
+  backgroundColor: '#ffeaa7', // seçili (sarımsı)
+},
+
+cashierPayRow: {
+  marginTop: 8,
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+},
+
+cashierSelectAllRow: {
+  marginTop: 6,
+  marginBottom: 4,
+  alignItems: 'flex-start',
+},
+
+cashierOrderRowUnpaid: {
+  backgroundColor: '#ffefef', // hafif kırmızı
+},
+
+cashierOrderRowSelected: {
+  backgroundColor: '#ffeaa7', // seçili (sarımsı)
+},
+
+cashierPayRow: {
+  marginTop: 8,
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
 },
 
 });
