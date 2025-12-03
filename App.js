@@ -112,11 +112,13 @@ export default function App() {
   const [orders, setOrders] = useState([]);
   const [selectedTable, setSelectedTable] = useState(null);
 
-const [mode, setMode] = useState('ORDER'); // eski 'WAITER' yerine
-const [selectedCashierItems, setSelectedCashierItems] = useState([]);
-const [selectedWaiterItems, setSelectedWaiterItems] = useState([]);
-const [selectedKitchenItems, setSelectedKitchenItems] = useState([]);
-const [expandedTables, setExpandedTables] = useState({});
+  const [mode, setMode] = useState('ORDER'); // ORDER | KITCHEN | WAITER | CASHIER
+
+  const [selectedCashierItems, setSelectedCashierItems] = useState([]);
+  const [selectedWaiterItems, setSelectedWaiterItems] = useState([]);
+  const [selectedKitchenItems, setSelectedKitchenItems] = useState([]);
+  const [expandedTables, setExpandedTables] = useState({});
+
 
 
   
@@ -252,6 +254,62 @@ const selectedItems = basket.map((item) => ({
       currentOrders.filter((order) => order.id !== id)
     );
   }
+  //-----------------------------
+
+  // Status helper’ları
+function getKitchenStatusForUnit(unit) {
+  // İçeceklerde mutfak durumu yok
+  if (unit.isDrink) return '—';
+  return unit.isReady ? 'READY' : 'PENDING';
+}
+
+function getServedStatusForUnit(unit) {
+  return unit.isServed ? 'SERVED' : 'NOT SERVED';
+}
+
+function getPaidStatusForUnit(unit) {
+  return unit.isPaid ? 'PAID' : 'NOT PAID';
+}
+
+
+  function buildUnitsForTable(tableKey, tableOrders) {
+    const units = [];
+
+    tableOrders.forEach((order) => {
+      order.items.forEach((it, itemIndex) => {
+        const qty = it.quantity || 0;
+        const readyCount = it.readyCount || 0;
+        const servedCount = it.servedCount || 0;
+        const paidCount = it.paidCount || 0;
+
+        // Menüdeki tanımı bul – içecek mi değil mi öğrenelim
+        const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
+        const isDrink = menuDef?.category === 'DRINK';
+
+        for (let unitIndex = 0; unitIndex < qty; unitIndex++) {
+          const unitKey = `${order.id}|${itemIndex}|${unitIndex}|${tableKey}`;
+
+          units.push({
+            unitKey,
+            orderId: order.id,
+            itemIndex,
+            unitIndex,
+            name: it.name,
+            price: it.price,
+            note: it.note,
+            isDrink,
+            isReady: !isDrink && unitIndex < readyCount,
+            isServed: unitIndex < servedCount,
+            isPaid: unitIndex < paidCount,
+          });
+        }
+      });
+    });
+
+    return units;
+  }
+
+  //------------------------------
 
   // KITCHEN: mark PENDING → READY
   function markOrderReady(id) {
@@ -340,6 +398,7 @@ function readySelectedItemsForTable(tableKey) {
     if (selectedForTable.length === 0) return currentOrders;
 
     const updated = currentOrders.map((order) => {
+      // Bu order'a ait seçili unitKey'ler
       const orderSelected = selectedForTable.filter((k) =>
         k.startsWith(order.id + '|')
       );
@@ -350,20 +409,22 @@ function readySelectedItemsForTable(tableKey) {
           const parts = k.split('|');
           return parts[1] === String(itemIndex);
         });
+
         if (itemKeys.length === 0) return it;
 
         const qty = it.quantity || 0;
         const currentReady = it.readyCount || 0;
-        const added = itemKeys.length;
-        const newReady = Math.min(qty, currentReady + added);
+        const add = itemKeys.length;
+        const newReady = Math.min(qty, currentReady + add);
 
         return {
           ...it,
-          readyCount: newReady,
+          readyCount: newReady,   // ✅ SADECE readyCount
+          // servedCount'a DOKUNMUYORUZ
         };
       });
 
-      // Tüm yemekler (drink hariç) ready mi diye order.status güncelle
+      // Sadece yemekler (DRINK hariç) ready ise order.status = READY
       const allFoodReady = newItems
         .filter((it) => {
           const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
@@ -381,11 +442,12 @@ function readySelectedItemsForTable(tableKey) {
     return updated;
   });
 
-  // Bu masaya ait seçili item'ları temizle
+  // Bu masaya ait seçili mutfak item'larını temizle
   setSelectedKitchenItems((prev) =>
     prev.filter((k) => !k.endsWith(`|${tableKey}`))
   );
 }
+
 
 
 
@@ -440,12 +502,256 @@ addItemToBasket({
     }
   }
 
+  
+
 
 
   function formatOrderText(order) {
   if (!order.items || order.items.length === 0) {
     return 'Empty order';
   }
+
+    // ---- TABLE → ORDERS grupla ----
+  const tablesForCashier = Object.entries(
+    orders.reduce((acc, order) => {
+      const key = String(order.tableId);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(order);
+      return acc;
+    }, {})
+  );
+
+  // ---- Order item'larını tek tek unit haline getir ----
+  function buildUnitsForTable(tableKey, tableOrders) {
+    const units = [];
+
+    tableOrders.forEach((order) => {
+      order.items.forEach((it, itemIndex) => {
+        const qty = it.quantity || 0;
+        const readyCount = it.readyCount || 0;
+        const servedCount = it.servedCount || 0;
+        const paidCount = it.paidCount || 0;
+
+        const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
+        const isDrink = menuDef?.category === 'DRINK';
+
+        for (let unitIndex = 0; unitIndex < qty; unitIndex++) {
+          const unitKey = `${order.id}|${itemIndex}|${unitIndex}|${tableKey}`;
+
+          units.push({
+            unitKey,
+            orderId: order.id,
+            itemIndex,
+            unitIndex,
+            name: it.name,
+            price: it.price,
+            note: it.note,
+            isDrink,
+            isReady: !isDrink && unitIndex < readyCount,
+            isServed: unitIndex < servedCount,
+            isPaid: unitIndex < paidCount,
+          });
+        }
+      });
+    });
+
+    return units;
+  }
+
+  // ---- SEÇİM TOGGLE FONKSİYONLARI ----
+  function toggleCashierItemSelection(unitKey) {
+    setSelectedCashierItems((prev) =>
+      prev.includes(unitKey)
+        ? prev.filter((k) => k !== unitKey)
+        : [...prev, unitKey]
+    );
+  }
+
+  function toggleWaiterItemSelection(unitKey) {
+    setSelectedWaiterItems((prev) =>
+      prev.includes(unitKey)
+        ? prev.filter((k) => k !== unitKey)
+        : [...prev, unitKey]
+    );
+  }
+
+  function toggleKitchenItemSelection(unitKey) {
+    setSelectedKitchenItems((prev) =>
+      prev.includes(unitKey)
+        ? prev.filter((k) => k !== unitKey)
+        : [...prev, unitKey]
+    );
+  }
+
+  // ---- ACTIONS: KITCHEN → READY ----
+  function readySelectedItemsForTable(tableKey) {
+    setOrders((currentOrders) => {
+      const selectedForTable = selectedKitchenItems.filter((k) =>
+        k.endsWith(`|${tableKey}`)
+      );
+      if (selectedForTable.length === 0) return currentOrders;
+
+      const updated = currentOrders.map((order) => {
+        const orderSelected = selectedForTable.filter((k) =>
+          k.startsWith(order.id + '|')
+        );
+        if (orderSelected.length === 0) return order;
+
+        const newItems = order.items.map((it, itemIndex) => {
+          const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
+          const isDrink = menuDef?.category === 'DRINK';
+          if (isDrink) return it; // içecek mutfakta yok sayılır
+
+          const itemKeys = orderSelected.filter((k) => {
+            const parts = k.split('|');
+            return parts[1] === String(itemIndex);
+          });
+
+          if (itemKeys.length === 0) return it;
+
+          const qty = it.quantity || 0;
+          const currentReady = it.readyCount || 0;
+          const add = itemKeys.length;
+          const newReady = Math.min(qty, currentReady + add);
+
+          return {
+            ...it,
+            readyCount: newReady,
+          };
+        });
+
+        const allFoodReady = newItems
+          .filter((it) => {
+            const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
+            return menuDef?.category !== 'DRINK';
+          })
+          .every(
+            (it) => (it.readyCount || 0) >= (it.quantity || 0)
+          );
+
+        return {
+          ...order,
+          items: newItems,
+          status: allFoodReady ? 'READY' : 'PENDING',
+        };
+      });
+
+      return updated;
+    });
+
+    setSelectedKitchenItems((prev) =>
+      prev.filter((k) => !k.endsWith(`|${tableKey}`))
+    );
+  }
+
+  // ---- ACTIONS: WAITER → SERVED ----
+  function serveSelectedItemsForTable(tableKey) {
+    setOrders((currentOrders) => {
+      const selectedForTable = selectedWaiterItems.filter((k) =>
+        k.endsWith(`|${tableKey}`)
+      );
+      if (selectedForTable.length === 0) return currentOrders;
+
+      const updated = currentOrders.map((order) => {
+        const orderSelected = selectedForTable.filter((k) =>
+          k.startsWith(order.id + '|')
+        );
+        if (orderSelected.length === 0) return order;
+
+        const newItems = order.items.map((it, itemIndex) => {
+          const itemKeys = orderSelected.filter((k) => {
+            const parts = k.split('|');
+            return parts[1] === String(itemIndex);
+          });
+
+          if (itemKeys.length === 0) return it;
+
+          const qty = it.quantity || 0;
+          const currentServed = it.servedCount || 0;
+          const add = itemKeys.length;
+          const newServed = Math.min(qty, currentServed + add);
+
+          return {
+            ...it,
+            servedCount: newServed, // sadece servedCount
+          };
+        });
+
+        return {
+          ...order,
+          items: newItems,
+        };
+      });
+
+      return updated;
+    });
+
+    setSelectedWaiterItems((prev) =>
+      prev.filter((k) => !k.endsWith(`|${tableKey}`))
+    );
+  }
+
+  // ---- ACTIONS: CASHIER → PAID ----
+  function paySelectedItemsForTable(tableKey) {
+    setOrders((currentOrders) => {
+      const selectedForTable = selectedCashierItems.filter((k) =>
+        k.endsWith(`|${tableKey}`)
+      );
+      if (selectedForTable.length === 0) return currentOrders;
+
+      const updated = currentOrders.map((order) => {
+        const orderSelected = selectedForTable.filter((k) =>
+          k.startsWith(order.id + '|')
+        );
+        if (orderSelected.length === 0) return order;
+
+        const newItems = order.items.map((it, itemIndex) => {
+          const itemKeys = orderSelected.filter((k) => {
+            const parts = k.split('|');
+            return parts[1] === String(itemIndex);
+          });
+
+          if (itemKeys.length === 0) return it;
+
+          const qty = it.quantity || 0;
+          const currentPaid = it.paidCount || 0;
+          const add = itemKeys.length;
+          const newPaid = Math.min(qty, currentPaid + add);
+
+          return {
+            ...it,
+            paidCount: newPaid,
+          };
+        });
+
+        return {
+          ...order,
+          items: newItems,
+        };
+      });
+
+      return updated;
+    });
+
+    setSelectedCashierItems((prev) =>
+      prev.filter((k) => !k.endsWith(`|${tableKey}`))
+    );
+  }
+
+  // ---- STATUS HELPERS (CASHIER/WAITER için ortak kullanabiliriz) ----
+  function getKitchenStatusForUnit(unit) {
+    if (unit.isDrink) return '—'; // içecekte asla PENDING/READY yok
+    return unit.isReady ? 'READY' : 'PENDING';
+  }
+
+  function getServedStatusForUnit(unit) {
+    return unit.isServed ? 'SERVED' : 'NOT SERVED';
+  }
+
+  function getPaidStatusForUnit(unit) {
+    return unit.isPaid ? 'PAID' : 'NOT PAID';
+  }
+
 
   const lines = [];
 
@@ -567,54 +873,56 @@ function paySelectedItemsForTable(tableKey) {
 
 function serveSelectedItemsForTable(tableKey) {
   setOrders((currentOrders) => {
-    const toServeMap = {};
-
-    selectedWaiterItems.forEach((unitKey) => {
-      const [orderId, itemIndexStr, unitIndexStr, unitTableKey] =
-        unitKey.split('|');
-      if (unitTableKey !== String(tableKey)) return;
-      const itemIndex = parseInt(itemIndexStr, 10);
-      const mapKey = `${orderId}|${itemIndex}`;
-      toServeMap[mapKey] = (toServeMap[mapKey] || 0) + 1;
-    });
-
-    if (Object.keys(toServeMap).length === 0) return currentOrders;
+    // Bu masaya ait seçili unitKey'ler
+    const selectedForTable = selectedWaiterItems.filter((k) =>
+      k.endsWith(`|${tableKey}`)
+    );
+    if (selectedForTable.length === 0) return currentOrders;
 
     const updated = currentOrders.map((order) => {
-      let changed = false;
+      // Bu order'a ait seçili unitKey'ler
+      const orderSelected = selectedForTable.filter((k) =>
+        k.startsWith(order.id + '|')
+      );
+      if (orderSelected.length === 0) return order;
 
-      const newItems = order.items.map((item, idx) => {
-        const mapKey = `${order.id}|${idx}`;
-        const addCount = toServeMap[mapKey] || 0;
-        if (!addCount) return item;
+      const newItems = order.items.map((it, itemIndex) => {
+        // Bu itemIndex’e ait seçili unitKey’ler
+        const itemKeys = orderSelected.filter((k) => {
+          const parts = k.split('|');
+          return parts[1] === String(itemIndex);
+        });
 
-        const prevServed = item.servedCount || 0;
-        const totalQty = item.quantity || 0;
-        const newServed = Math.min(prevServed + addCount, totalQty);
+        if (itemKeys.length === 0) return it;
 
-        if (newServed !== prevServed) {
-          changed = true;
-          return { ...item, servedCount: newServed };
-        }
-        return item;
+        const qty = it.quantity || 0;
+        const currentServed = it.servedCount || 0;
+        const add = itemKeys.length;
+        const newServed = Math.min(qty, currentServed + add);
+
+        return {
+          ...it,
+          servedCount: newServed,   // 🔥 SADECE servedCount değişiyor
+          // readyCount aynen bırakıyoruz
+        };
       });
 
-      if (!changed) return order;
-      return { ...order, items: newItems };
+      // 🔥 ÖNEMLİ: Burada order.status'a DOKUNMUYORUZ
+      return {
+        ...order,
+        items: newItems,
+      };
     });
 
     return updated;
   });
 
-  // bu masaya ait seçili satırları temizle
+  // Bu masaya ait seçili item'ları temizle
   setSelectedWaiterItems((prev) =>
-    prev.filter((unitKey) => {
-      const parts = unitKey.split('|');
-      const unitTableKey = parts[3];
-      return unitTableKey !== String(tableKey);
-    })
+    prev.filter((k) => !k.endsWith(`|${tableKey}`))
   );
 }
+
 
 const tablesForCashier = Object.entries(
   orders.reduce((acc, order) => {
@@ -1048,723 +1356,669 @@ const tablesForCashier = Object.entries(
         </View>
       )}
 
- {mode === 'KITCHEN' && (
-  <View style={styles.cashierContainer}>
-    <Text style={styles.sectionTitle}>Kitchen Overview</Text>
+      {mode === 'KITCHEN' && (
+        <View style={styles.cashierContainer}>
+          <Text style={styles.sectionTitle}>Kitchen Overview</Text>
 
-    {tablesForCashier.length === 0 && (
-      <Text style={styles.emptyText}>No orders yet.</Text>
-    )}
+          {tablesForCashier.length === 0 && (
+            <Text style={styles.emptyText}>No orders yet.</Text>
+          )}
 
-    <FlatList
-      data={tablesForCashier}
-      keyExtractor={([tableKey]) => tableKey}
-      renderItem={({ item }) => {
-        const [tableKey, tableOrders] = item;
+          <FlatList
+            data={tablesForCashier}
+            keyExtractor={([tableKey]) => tableKey}
+            renderItem={({ item }) => {
+              const [tableKey, tableOrders] = item;
+              const allUnits = buildUnitsForTable(tableKey, tableOrders);
+              const foodUnits = allUnits.filter((u) => !u.isDrink);
 
-        const waitingUnits = [];
-        const readyUnits = [];
+              if (foodUnits.length === 0) return null;
 
-        tableOrders.forEach((order) => {
-          order.items.forEach((it, itemIndex) => {
-            const totalQty = it.quantity || 0;
-            const readyCount = it.readyCount || 0;
-            const servedCount = it.servedCount || 0;
-            const paidCount = it.paidCount || 0;
+              const unreadyUnits = foodUnits.filter(
+                (u) => !u.isReady
+              );
+              const readyUnits = foodUnits.filter((u) => u.isReady);
 
-            // 🔥 Mutfak içecekleri görmesin
-            const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
-            const isDrink = menuDef?.category === 'DRINK';
-            if (isDrink) return;
+              const totalCount = foodUnits.length;
+              const readyCountTotal = readyUnits.length;
+              const pendingCountTotal = unreadyUnits.length;
 
-            for (let unitIndex = 0; unitIndex < totalQty; unitIndex++) {
-              const unitKey = `${order.id}|${itemIndex}|${unitIndex}|${tableKey}`;
+              const isExpanded = !!expandedTables[tableKey];
 
-              const isReady = unitIndex < readyCount;
-              const isServed = unitIndex < servedCount;
-              const isPaid = unitIndex < paidCount;
+              const allUnreadySelected =
+                unreadyUnits.length > 0 &&
+                unreadyUnits.every((u) =>
+                  selectedKitchenItems.includes(u.unitKey)
+                );
 
-              const baseUnit = {
-                unitKey,
-                orderId: order.id,
-                itemIndex,
-                unitIndex,
-                name: it.name,
-                price: it.price,
-                status: order.status,
-                note: it.note,
-                isReady,
-                isServed,
-                isPaid,
-              };
+              const selectedCount = unreadyUnits.filter((u) =>
+                selectedKitchenItems.includes(u.unitKey)
+              ).length;
 
-              if (isReady) {
-                readyUnits.push(baseUnit);
-              } else {
-                waitingUnits.push(baseUnit);
-              }
-            }
-          });
-        });
-
-        if (waitingUnits.length === 0 && readyUnits.length === 0) {
-          return null;
-        }
-
-        const totalCount = waitingUnits.length + readyUnits.length;
-        const readyCountTotal = readyUnits.length;
-        const waitingCountTotal = waitingUnits.length;
-
-        const allWaitingSelected =
-          waitingUnits.length > 0 &&
-          waitingUnits.every((u) =>
-            selectedKitchenItems.includes(u.unitKey)
-          );
-
-        const selectedCount = waitingUnits.filter((u) =>
-          selectedKitchenItems.includes(u.unitKey)
-        ).length;
-
-        const isExpanded = !!expandedTables[tableKey];
-
-        return (
-          <View style={styles.cashierTableCard}>
-            {/* HEADER - Masa & adetler (accordion) */}
-            <Pressable
-              onPress={() =>
-                setExpandedTables((prev) => ({
-                  ...prev,
-                  [tableKey]: !prev[tableKey],
-                }))
-              }
-            >
-              <Text style={styles.cashierTableTitle}>
-                Masa {tableKey}
-              </Text>
-
-              <View style={styles.cashierSummaryRow}>
-                <Text style={styles.cashierSummaryText}>
-                  TOTAL: {totalCount} items
-                </Text>
-                <Text style={styles.cashierSummaryText}>
-                  READY: {readyCountTotal}
-                </Text>
-                <Text style={styles.cashierSummaryText}>
-                  NOT READY: {waitingCountTotal}
-                </Text>
-              </View>
-
-              <Text
-                style={{
-                  fontSize: 12,
-                  color: '#888',
-                  marginTop: 2,
-                }}
-              >
-                {isExpanded ? '▲ Gizle' : '▼ Detayları Göster'}
-              </Text>
-            </Pressable>
-
-            {/* DETAYLAR sadece expanded ise */}
-            {isExpanded && (
-              <>
-                {/* Select All / Clear All */}
-                <View style={styles.cashierSelectAllRow}>
-                  <Button
-                    title={allWaitingSelected ? 'Clear All' : 'Select All'}
-                    color="#0984e3"
-                    onPress={() => {
-                      const allKeys = waitingUnits.map(
-                        (u) => u.unitKey
-                      );
-
-                      if (allWaitingSelected) {
-                        setSelectedKitchenItems((prev) =>
-                          prev.filter((key) => !allKeys.includes(key))
-                        );
-                      } else {
-                        setSelectedKitchenItems((prev) => [
-                          ...prev,
-                          ...allKeys.filter(
-                            (k) => !prev.includes(k)
-                          ),
-                        ]);
-                      }
-                    }}
-                  />
-                </View>
-
-                {/* NOT READY ITEMS */}
-                {waitingUnits.map((unit) => {
-                  const isSelected =
-                    selectedKitchenItems.includes(unit.unitKey);
-
-                  const kitchenStatus = unit.isReady
-                    ? 'READY'
-                    : 'PENDING';
-                  const servedStatus = unit.isServed
-                    ? 'SERVED'
-                    : 'NOT SERVED';
-                  const paidStatus = unit.isPaid
-                    ? 'PAID'
-                    : 'NOT PAID';
-
-                  return (
-                    <Pressable
-                      key={unit.unitKey}
-                      style={[
-                        styles.cashierOrderRow,
-                        styles.cashierOrderRowUnpaid, // hafif kırmızı
-                        isSelected && styles.cashierOrderRowSelected,
-                      ]}
-                      onPress={() =>
-                        toggleKitchenItemSelection(unit.unitKey)
-                      }
-                    >
-                      <Text style={styles.cashierOrderText}>
-                        {unit.name} - TL {unit.price.toFixed(2)} [
-                        {kitchenStatus} | {servedStatus} | {paidStatus}]
+              return (
+                <View style={styles.cashierTableCard}>
+                  {/* HEADER */}
+                  <Pressable
+                    onPress={() =>
+                      setExpandedTables((prev) => ({
+                        ...prev,
+                        [tableKey]: !prev[tableKey],
+                      }))
+                    }
+                  >
+                    <Text style={styles.cashierTableTitle}>
+                      Masa {tableKey}
+                    </Text>
+                    <View style={styles.cashierSummaryRow}>
+                      <Text style={styles.cashierSummaryText}>
+                        TOTAL: {totalCount} items
                       </Text>
-                    </Pressable>
-                  );
-                })}
-
-                {/* READY ITEMS */}
-                {readyUnits.length > 0 && (
-                  <View style={{ marginTop: 6 }}>
+                      <Text style={styles.cashierSummaryText}>
+                        READY: {readyCountTotal}
+                      </Text>
+                      <Text style={styles.cashierSummaryText}>
+                        PENDING: {pendingCountTotal}
+                      </Text>
+                    </View>
                     <Text
                       style={{
                         fontSize: 12,
-                        color: '#555',
-                        marginBottom: 2,
+                        color: '#888',
+                        marginTop: 2,
                       }}
                     >
-                      Ready items:
+                      {isExpanded
+                        ? '▲ Gizle'
+                        : '▼ Detayları Göster'}
                     </Text>
-                    {readyUnits.map((unit) => {
-                      const kitchenStatus = 'READY';
-                      const servedStatus = unit.isServed
-                        ? 'SERVED'
-                        : 'NOT SERVED';
-                      const paidStatus = unit.isPaid
-                        ? 'PAID'
-                        : 'NOT PAID';
+                  </Pressable>
 
-                      return (
-                        <View
-                          key={unit.unitKey}
-                          style={[
-                            styles.cashierOrderRow,
-                            styles.cashierOrderRowPaid, // yeşil ton
-                          ]}
-                        >
-                          <Text style={styles.cashierOrderText}>
-                            {unit.name} - TL {unit.price.toFixed(2)} [
-                            {kitchenStatus} | {servedStatus} | {paidStatus}]
-                          </Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
+                  {isExpanded && (
+                    <>
+                      {/* Select All / Clear All */}
+                      <View style={styles.cashierSelectAllRow}>
+                        <Button
+                          title={
+                            allUnreadySelected
+                              ? 'Clear All'
+                              : 'Select All'
+                          }
+                          color="#0984e3"
+                          onPress={() => {
+                            const allKeys = unreadyUnits.map(
+                              (u) => u.unitKey
+                            );
+                            if (allUnreadySelected) {
+                              setSelectedKitchenItems((prev) =>
+                                prev.filter(
+                                  (k) => !allKeys.includes(k)
+                                )
+                              );
+                            } else {
+                              setSelectedKitchenItems((prev) => [
+                                ...prev,
+                                ...allKeys.filter(
+                                  (k) => !prev.includes(k)
+                                ),
+                              ]);
+                            }
+                          }}
+                        />
+                      </View>
 
-                {/* Selected & Mark Ready */}
-                <View style={styles.cashierPayRow}>
-                  <Text style={styles.cashierSummaryText}>
-                    Selected: {selectedCount} items
-                  </Text>
-                  <Button
-                    title="Mark Ready"
-                    color={selectedCount > 0 ? '#27ae60' : '#aaa'}
-                    onPress={() =>
-                      readySelectedItemsForTable(tableKey)
-                    }
-                    disabled={selectedCount === 0}
-                  />
-                </View>
-              </>
-            )}
-          </View>
-        );
-      }}
-    />
-  </View>
-)}
+                      {/* PENDING (unready) items */}
+                      {unreadyUnits.map((unit) => {
+                        const isSelected =
+                          selectedKitchenItems.includes(
+                            unit.unitKey
+                          );
 
+                        const kitchenStatus = unit.isReady
+                          ? 'READY'
+                          : 'PENDING';
+                        const servedStatus =
+                          getServedStatusForUnit(unit);
+                        const paidStatus =
+                          getPaidStatusForUnit(unit);
 
-{mode === 'WAITER' && (
-  <View style={styles.cashierContainer}>
-    <Text style={styles.sectionTitle}>Waiter Overview</Text>
-
-    {tablesForCashier.length === 0 && (
-      <Text style={styles.emptyText}>No orders yet.</Text>
-    )}
-
-    <FlatList
-      data={tablesForCashier}
-      keyExtractor={([tableKey]) => tableKey}
-      renderItem={({ item }) => {
-        const [tableKey, tableOrders] = item;
-
-        const unservedUnits = [];
-        const servedUnits = [];
-
-        tableOrders.forEach((order) => {
-          order.items.forEach((it, itemIndex) => {
-            const totalQty = it.quantity || 0;
-            const servedCount = it.servedCount || 0;
-            const paidCount = it.paidCount || 0;
-
-            // Menüden kategori çek → içecek mi?
-            const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
-            const isDrink = menuDef?.category === 'DRINK';
-
-            for (let unitIndex = 0; unitIndex < totalQty; unitIndex++) {
-              const unitKey = `${order.id}|${itemIndex}|${unitIndex}|${tableKey}`;
-
-              const isServed = unitIndex < servedCount;
-              const isPaid = unitIndex < paidCount; // 🔥 SADECE paidCount’a bağlı
-
-              const baseUnit = {
-                unitKey,
-                orderId: order.id,
-                itemIndex,
-                unitIndex,
-                name: it.name,
-                price: it.price,
-                status: order.status,
-                note: it.note,
-                isDrink,
-                isServed,
-                isPaid,
-              };
-
-              if (isServed) {
-                servedUnits.push(baseUnit);
-              } else {
-                unservedUnits.push(baseUnit);
-              }
-            }
-          });
-        });
-
-        const totalCount = unservedUnits.length + servedUnits.length;
-        const servedCountTotal = servedUnits.length;
-        const unservedCountTotal = unservedUnits.length;
-
-        const allUnservedSelected =
-          unservedUnits.length > 0 &&
-          unservedUnits.every((u) =>
-            selectedWaiterItems.includes(u.unitKey)
-          );
-
-        const selectedCount = unservedUnits.filter((u) =>
-          selectedWaiterItems.includes(u.unitKey)
-        ).length;
-
-        const isExpanded = !!expandedTables[tableKey];
-
-        return (
-          <View style={styles.cashierTableCard}>
-            {/* HEADER */}
-            <Pressable
-              onPress={() =>
-                setExpandedTables((prev) => ({
-                  ...prev,
-                  [tableKey]: !prev[tableKey],
-                }))
-              }
-            >
-              <Text style={styles.cashierTableTitle}>
-                Masa {tableKey}
-              </Text>
-
-              <View style={styles.cashierSummaryRow}>
-                <Text style={styles.cashierSummaryText}>
-                  TOTAL: {totalCount} items
-                </Text>
-                <Text style={styles.cashierSummaryText}>
-                  SERVED: {servedCountTotal}
-                </Text>
-                <Text style={styles.cashierSummaryText}>
-                  UNSERVED: {unservedCountTotal}
-                </Text>
-              </View>
-
-              <Text
-                style={{
-                  fontSize: 12,
-                  color: '#888',
-                  marginTop: 2,
-                }}
-              >
-                {isExpanded ? '▲ Gizle' : '▼ Detayları Göster'}
-              </Text>
-            </Pressable>
-
-            {/* DETAYLAR */}
-            {isExpanded && (
-              <>
-                {/* Select All / Clear All */}
-                <View style={styles.cashierSelectAllRow}>
-                  <Button
-                    title={
-                      allUnservedSelected ? 'Clear All' : 'Select All'
-                    }
-                    color="#0984e3"
-                    onPress={() => {
-                      const allKeys = unservedUnits.map(
-                        (u) => u.unitKey
-                      );
-
-                      if (allUnservedSelected) {
-                        setSelectedWaiterItems((prev) =>
-                          prev.filter((key) => !allKeys.includes(key))
+                        return (
+                          <Pressable
+                            key={unit.unitKey}
+                            style={[
+                              styles.cashierOrderRow,
+                              styles.cashierOrderRowUnpaid,
+                              isSelected &&
+                                styles.cashierOrderRowSelected,
+                            ]}
+                            onPress={() =>
+                              toggleKitchenItemSelection(
+                                unit.unitKey
+                              )
+                            }
+                          >
+                            <Text style={styles.cashierOrderText}>
+                              {unit.name} - TL{' '}
+                              {unit.price.toFixed(2)} [
+                              {kitchenStatus} | {servedStatus} |{' '}
+                              {paidStatus}]
+                            </Text>
+                          </Pressable>
                         );
-                      } else {
-                        setSelectedWaiterItems((prev) => [
-                          ...prev,
-                          ...allKeys.filter(
-                            (k) => !prev.includes(k)
-                          ),
-                        ]);
-                      }
-                    }}
-                  />
+                      })}
+
+                      {/* READY items */}
+                      {readyUnits.length > 0 && (
+                        <View style={{ marginTop: 6 }}>
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              color: '#555',
+                              marginBottom: 2,
+                            }}
+                          >
+                            Ready items:
+                          </Text>
+                          {readyUnits.map((unit) => {
+                            const kitchenStatus = 'READY';
+                            const servedStatus =
+                              getServedStatusForUnit(unit);
+                            const paidStatus =
+                              getPaidStatusForUnit(unit);
+
+                            return (
+                              <View
+                                key={unit.unitKey}
+                                style={[
+                                  styles.cashierOrderRow,
+                                  styles.cashierOrderRowPaid,
+                                ]}
+                              >
+                                <Text
+                                  style={styles.cashierOrderText}
+                                >
+                                  {unit.name} - TL{' '}
+                                  {unit.price.toFixed(2)} [
+                                  {kitchenStatus} | {servedStatus}{' '}
+                                  | {paidStatus}]
+                                </Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
+
+                      {/* Mark Ready */}
+                      <View style={styles.cashierPayRow}>
+                        <Text
+                          style={styles.cashierSummaryText}
+                        >
+                          Selected: {selectedCount} items
+                        </Text>
+                        <Button
+                          title="Mark Ready"
+                          color={
+                            selectedCount > 0
+                              ? '#27ae60'
+                              : '#aaa'
+                          }
+                          onPress={() =>
+                            readySelectedItemsForTable(tableKey)
+                          }
+                          disabled={selectedCount === 0}
+                        />
+                      </View>
+                    </>
+                  )}
                 </View>
+              );
+            }}
+          />
+        </View>
+      )}
 
-                {/* UNSERVED ITEMS */}
-                {unservedUnits.map((unit) => {
-                  const isSelected = selectedWaiterItems.includes(
-                    unit.unitKey
-                  );
 
-                  const kitchenStatus = unit.isDrink
-                    ? '—' // içecek için READY/PENDING yok
-                    : unit.status === 'READY'
-                    ? 'READY'
-                    : 'PENDING';
 
-                  const servedStatus = 'NOT SERVED';
-                  const paidStatus = unit.isPaid ? 'PAID' : 'NOT PAID'; // ✅ sadece unit.isPaid
+      {mode === 'WAITER' && (
+        <View style={styles.cashierContainer}>
+          <Text style={styles.sectionTitle}>Waiter Overview</Text>
 
-                  return (
-                    <Pressable
-                      key={unit.unitKey}
-                      style={[
-                        styles.cashierOrderRow,
-                        styles.cashierOrderRowUnpaid,
-                        isSelected &&
-                          styles.cashierOrderRowSelected,
-                      ]}
-                      onPress={() =>
-                        toggleWaiterItemSelection(unit.unitKey)
-                      }
-                    >
-                      <Text style={styles.cashierOrderText}>
-                        {unit.name} - TL {unit.price.toFixed(2)} [
-                        {kitchenStatus} | {servedStatus} | {paidStatus}]
+          {tablesForCashier.length === 0 && (
+            <Text style={styles.emptyText}>No orders yet.</Text>
+          )}
+
+          <FlatList
+            data={tablesForCashier}
+            keyExtractor={([tableKey]) => tableKey}
+            renderItem={({ item }) => {
+              const [tableKey, tableOrders] = item;
+              const allUnits = buildUnitsForTable(tableKey, tableOrders);
+
+              if (allUnits.length === 0) return null;
+
+              const unservedUnits = allUnits.filter(
+                (u) => !u.isServed
+              );
+              const servedUnits = allUnits.filter(
+                (u) => u.isServed
+              );
+
+              const totalCount = allUnits.length;
+              const servedCountTotal = servedUnits.length;
+              const unservedCountTotal = unservedUnits.length;
+
+              const isExpanded = !!expandedTables[tableKey];
+
+              const allUnservedSelected =
+                unservedUnits.length > 0 &&
+                unservedUnits.every((u) =>
+                  selectedWaiterItems.includes(u.unitKey)
+                );
+
+              const selectedCount = unservedUnits.filter((u) =>
+                selectedWaiterItems.includes(u.unitKey)
+              ).length;
+
+              return (
+                <View style={styles.cashierTableCard}>
+                  {/* HEADER */}
+                  <Pressable
+                    onPress={() =>
+                      setExpandedTables((prev) => ({
+                        ...prev,
+                        [tableKey]: !prev[tableKey],
+                      }))
+                    }
+                  >
+                    <Text style={styles.cashierTableTitle}>
+                      Masa {tableKey}
+                    </Text>
+                    <View style={styles.cashierSummaryRow}>
+                      <Text style={styles.cashierSummaryText}>
+                        TOTAL: {totalCount} items
                       </Text>
-                    </Pressable>
-                  );
-                })}
-
-                {/* SERVED ITEMS */}
-                {servedUnits.length > 0 && (
-                  <View style={{ marginTop: 6 }}>
+                      <Text style={styles.cashierSummaryText}>
+                        SERVED: {servedCountTotal}
+                      </Text>
+                      <Text style={styles.cashierSummaryText}>
+                        UNSERVED: {unservedCountTotal}
+                      </Text>
+                    </View>
                     <Text
                       style={{
                         fontSize: 12,
-                        color: '#555',
-                        marginBottom: 2,
+                        color: '#888',
+                        marginTop: 2,
                       }}
                     >
-                      Served items:
+                      {isExpanded
+                        ? '▲ Gizle'
+                        : '▼ Detayları Göster'}
                     </Text>
-                    {servedUnits.map((unit) => {
-                      const kitchenStatus = unit.isDrink
-                        ? '—'
-                        : unit.status === 'READY'
-                        ? 'READY'
-                        : 'PENDING';
+                  </Pressable>
 
-                      const servedStatus = 'SERVED';
-                      const paidStatus = unit.isPaid
-                        ? 'PAID'
-                        : 'NOT PAID'; // ✅ burada da aynı
+                  {isExpanded && (
+                    <>
+                      {/* Select All / Clear All */}
+                      <View style={styles.cashierSelectAllRow}>
+                        <Button
+                          title={
+                            allUnservedSelected
+                              ? 'Clear All'
+                              : 'Select All'
+                          }
+                          color="#0984e3"
+                          onPress={() => {
+                            const allKeys = unservedUnits.map(
+                              (u) => u.unitKey
+                            );
+                            if (allUnservedSelected) {
+                              setSelectedWaiterItems((prev) =>
+                                prev.filter(
+                                  (k) => !allKeys.includes(k)
+                                )
+                              );
+                            } else {
+                              setSelectedWaiterItems((prev) => [
+                                ...prev,
+                                ...allKeys.filter(
+                                  (k) => !prev.includes(k)
+                                ),
+                              ]);
+                            }
+                          }}
+                        />
+                      </View>
 
-                      return (
-                        <View
-                          key={unit.unitKey}
-                          style={[
-                            styles.cashierOrderRow,
-                            styles.cashierOrderRowPaid,
-                          ]}
-                        >
-                          <Text style={styles.cashierOrderText}>
-                            {unit.name} - TL {unit.price.toFixed(2)} [
-                            {kitchenStatus} | {servedStatus} | {paidStatus}]
-                          </Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
+                      {/* UNSERVED items */}
+                      {unservedUnits.map((unit) => {
+                        const isSelected =
+                          selectedWaiterItems.includes(
+                            unit.unitKey
+                          );
 
-                {/* Selected & Serve */}
-                <View style={styles.cashierPayRow}>
-                  <Text style={styles.cashierSummaryText}>
-                    Selected: {selectedCount} items
-                  </Text>
-                  <Button
-                    title="Serve"
-                    color={selectedCount > 0 ? '#27ae60' : '#aaa'}
-                    onPress={() =>
-                      serveSelectedItemsForTable(tableKey)
-                    }
-                    disabled={selectedCount === 0}
-                  />
-                </View>
-              </>
-            )}
-          </View>
-        );
-      }}
-    />
-  </View>
-)}
+                        const kitchenStatus =
+                          getKitchenStatusForUnit(unit);
+                        const servedStatus =
+                          getServedStatusForUnit(unit);
+                        const paidStatus =
+                          getPaidStatusForUnit(unit);
 
-
-
-{mode === 'CASHIER' && (
-  <View style={styles.cashierContainer}>
-    <Text style={styles.sectionTitle}>Cashier Overview</Text>
-
-    {tablesForCashier.length === 0 && (
-      <Text style={styles.emptyText}>No orders yet.</Text>
-    )}
-
-    <FlatList
-      data={tablesForCashier}
-      keyExtractor={([tableKey]) => tableKey}
-      renderItem={({ item }) => {
-        const [tableKey, tableOrders] = item;
-
-        const unpaidUnits = [];
-        const paidUnits = [];
-
-    tableOrders.forEach((order) => {
-  order.items.forEach((it, itemIndex) => {
-    const totalQty = it.quantity || 0;
-    const servedCount = it.servedCount || 0;
-    const paidCount = it.paidCount || 0;
-
-    const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
-    const isDrink = menuDef?.category === 'DRINK';
-
-    for (let unitIndex = 0; unitIndex < totalQty; unitIndex++) {
-      const unitKey = `${order.id}|${itemIndex}|${unitIndex}|${tableKey}`;
-
-      const isServed = unitIndex < servedCount;
-      const isPaid = unitIndex < paidCount;
-
-      const baseUnit = {
-        unitKey,
-        orderId: order.id,
-        itemIndex,
-        unitIndex,
-        name: it.name,
-        price: it.price,
-        status: order.status,
-        note: it.note,
-        isServed,
-        isPaid,
-        isDrink, // 🆕
-      };
-
-      if (isPaid) {
-        paidUnits.push(baseUnit);
-      } else {
-        unpaidUnits.push(baseUnit);
-      }
-    }
-  });
-});
-
-
-        const totalAmount =
-          unpaidUnits.reduce((s, u) => s + u.price, 0) +
-          paidUnits.reduce((s, u) => s + u.price, 0);
-        const paidAmount = paidUnits.reduce((s, u) => s + u.price, 0);
-        const unpaidAmount = unpaidUnits.reduce((s, u) => s + u.price, 0);
-
-        const allUnpaidSelected =
-          unpaidUnits.length > 0 &&
-          unpaidUnits.every((u) => selectedCashierItems.includes(u.unitKey));
-
-        const selectedAmount = unpaidUnits
-          .filter((u) => selectedCashierItems.includes(u.unitKey))
-          .reduce((s, u) => s + u.price, 0);
-
-        const isExpanded = !!expandedTables[tableKey];
-
-        return (
-          <View style={styles.cashierTableCard}>
-            {/* HEADER: Masa + Totaller (accordion) */}
-            <Pressable
-              onPress={() =>
-                setExpandedTables((prev) => ({
-                  ...prev,
-                  [tableKey]: !prev[tableKey],
-                }))
-              }
-            >
-              <Text style={styles.cashierTableTitle}>
-                Masa {tableKey}
-              </Text>
-
-              <View style={styles.cashierSummaryRow}>
-                <Text style={styles.cashierSummaryText}>
-                  TOTAL: TL {totalAmount.toFixed(2)}
-                </Text>
-                <Text style={styles.cashierSummaryText}>
-                  PAID: TL {paidAmount.toFixed(2)}
-                </Text>
-                <Text style={styles.cashierSummaryText}>
-                  UNPAID: TL {unpaidAmount.toFixed(2)}
-                </Text>
-              </View>
-
-              <Text
-                style={{
-                  fontSize: 12,
-                  color: '#888',
-                  marginTop: 2,
-                }}
-              >
-                {isExpanded ? '▲ Gizle' : '▼ Detayları Göster'}
-              </Text>
-            </Pressable>
-
-            {/* DETAYLAR: sadece expanded ise */}
-            {isExpanded && (
-              <>
-                {/* Select All / Clear All */}
-                <View style={styles.cashierSelectAllRow}>
-                  <Button
-                    title={allUnpaidSelected ? 'Clear All' : 'Select All'}
-                    color="#0984e3"
-                    onPress={() => {
-                      const allKeys = unpaidUnits.map((u) => u.unitKey);
-
-                      if (allUnpaidSelected) {
-                        setSelectedCashierItems((prev) =>
-                          prev.filter((key) => !allKeys.includes(key))
+                        return (
+                          <Pressable
+                            key={unit.unitKey}
+                            style={[
+                              styles.cashierOrderRow,
+                              styles.cashierOrderRowUnpaid,
+                              isSelected &&
+                                styles.cashierOrderRowSelected,
+                            ]}
+                            onPress={() =>
+                              toggleWaiterItemSelection(
+                                unit.unitKey
+                              )
+                            }
+                          >
+                            <Text style={styles.cashierOrderText}>
+                              {unit.name} - TL{' '}
+                              {unit.price.toFixed(2)} [
+                              {kitchenStatus} | {servedStatus} |{' '}
+                              {paidStatus}]
+                            </Text>
+                          </Pressable>
                         );
-                      } else {
-                        setSelectedCashierItems((prev) => [
-                          ...prev,
-                          ...allKeys.filter((k) => !prev.includes(k)),
-                        ]);
-                      }
-                    }}
-                  />
-                </View>
+                      })}
 
-                {/* UNPAID ITEMS */}
+                      {/* SERVED items */}
+                      {servedUnits.length > 0 && (
+                        <View style={{ marginTop: 6 }}>
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              color: '#555',
+                              marginBottom: 2,
+                            }}
+                          >
+                            Served items:
+                          </Text>
+                          {servedUnits.map((unit) => {
+                            const kitchenStatus =
+                              getKitchenStatusForUnit(unit);
+                            const servedStatus =
+                              getServedStatusForUnit(unit);
+                            const paidStatus =
+                              getPaidStatusForUnit(unit);
+
+                            return (
+                              <View
+                                key={unit.unitKey}
+                                style={[
+                                  styles.cashierOrderRow,
+                                  styles.cashierOrderRowPaid,
+                                ]}
+                              >
+                                <Text
+                                  style={styles.cashierOrderText}
+                                >
+                                  {unit.name} - TL{' '}
+                                  {unit.price.toFixed(2)} [
+                                  {kitchenStatus} | {servedStatus}{' '}
+                                  | {paidStatus}]
+                                </Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
+
+                      {/* Serve button */}
+                      <View style={styles.cashierPayRow}>
+                        <Text
+                          style={styles.cashierSummaryText}
+                        >
+                          Selected: {selectedCount} items
+                        </Text>
+                        <Button
+                          title="Serve"
+                          color={
+                            selectedCount > 0
+                              ? '#27ae60'
+                              : '#aaa'
+                          }
+                          onPress={() =>
+                            serveSelectedItemsForTable(tableKey)
+                          }
+                          disabled={selectedCount === 0}
+                        />
+                      </View>
+                    </>
+                  )}
+                </View>
+              );
+            }}
+          />
+        </View>
+      )}
+
+
+      {mode === 'CASHIER' && (
+        <View style={styles.cashierContainer}>
+          <Text style={styles.sectionTitle}>Cashier Overview</Text>
+
+          {tablesForCashier.length === 0 && (
+            <Text style={styles.emptyText}>No orders yet.</Text>
+          )}
+
+          <FlatList
+            data={tablesForCashier}
+            keyExtractor={([tableKey]) => tableKey}
+            renderItem={({ item }) => {
+              const [tableKey, tableOrders] = item;
+              const allUnits = buildUnitsForTable(tableKey, tableOrders);
+
+              if (allUnits.length === 0) return null;
+
+              const unpaidUnits = allUnits.filter(
+                (u) => !u.isPaid
+              );
+              const paidUnits = allUnits.filter((u) => u.isPaid);
+
+              const totalAmount =
+                allUnits.reduce(
+                  (s, u) => s + u.price,
+                  0
+                );
+              const paidAmount = paidUnits.reduce(
+                (s, u) => s + u.price,
+                0
+              );
+              const unpaidAmount = unpaidUnits.reduce(
+                (s, u) => s + u.price,
+                0
+              );
+
+              const selectedAmount = unpaidUnits
+                .filter((u) =>
+                  selectedCashierItems.includes(u.unitKey)
+                )
+                .reduce((s, u) => s + u.price, 0);
+
+              const isExpanded = !!expandedTables[tableKey];
+
+              const allUnpaidSelected =
+                unpaidUnits.length > 0 &&
+                unpaidUnits.every((u) =>
+                  selectedCashierItems.includes(u.unitKey)
+                );
+
+              return (
+                <View style={styles.cashierTableCard}>
+                  {/* HEADER */}
+                  <Pressable
+                    onPress={() =>
+                      setExpandedTables((prev) => ({
+                        ...prev,
+                        [tableKey]: !prev[tableKey],
+                      }))
+                    }
+                  >
+                    <Text style={styles.cashierTableTitle}>
+                      Masa {tableKey}
+                    </Text>
+                    <View style={styles.cashierSummaryRow}>
+                      <Text style={styles.cashierSummaryText}>
+                        TOTAL: TL {totalAmount.toFixed(2)}
+                      </Text>
+                      <Text style={styles.cashierSummaryText}>
+                        PAID: TL {paidAmount.toFixed(2)}
+                      </Text>
+                      <Text style={styles.cashierSummaryText}>
+                        UNPAID: TL {unpaidAmount.toFixed(2)}
+                      </Text>
+                    </View>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: '#888',
+                        marginTop: 2,
+                      }}
+                    >
+                      {isExpanded
+                        ? '▲ Gizle'
+                        : '▼ Detayları Göster'}
+                    </Text>
+                  </Pressable>
+
+                  {isExpanded && (
+                    <>
+                      {/* Select All / Clear All */}
+                      <View style={styles.cashierSelectAllRow}>
+                        <Button
+                          title={
+                            allUnpaidSelected
+                              ? 'Clear All'
+                              : 'Select All'
+                          }
+                          color="#0984e3"
+                          onPress={() => {
+                            const allKeys = unpaidUnits.map(
+                              (u) => u.unitKey
+                            );
+                            if (allUnpaidSelected) {
+                              setSelectedCashierItems((prev) =>
+                                prev.filter(
+                                  (k) => !allKeys.includes(k)
+                                )
+                              );
+                            } else {
+                              setSelectedCashierItems((prev) => [
+                                ...prev,
+                                ...allKeys.filter(
+                                  (k) => !prev.includes(k)
+                                ),
+                              ]);
+                            }
+                          }}
+                        />
+                      </View>
+
+                      {/* UNPAID items */}
                 {unpaidUnits.map((unit) => {
-                  const isSelected = selectedCashierItems.includes(unit.unitKey);
-                  const kitchenStatus = unit.isDrink
-  ? ''
-  : unit.status === 'READY'
-  ? 'READY'
-  : 'PENDING';
+  const isSelected = selectedCashierItems.includes(unit.unitKey);
+  const kitchenStatus = getKitchenStatusForUnit(unit);
+  const servedStatus = getServedStatusForUnit(unit);
+  const paidStatus = getPaidStatusForUnit(unit);
 
-const servedStatus = unit.isServed ? 'SERVED' : 'NOT SERVED';
-const paidStatus = 'UNPAID';
+  return (
+    <Pressable
+      key={unit.unitKey}
+      style={({ pressed }) => [
+        styles.cashierOrderRow,
+        styles.cashierOrderRowUnpaid,          // hafif kırmızı arka plan
+        isSelected && styles.cashierOrderRowSelected, // seçilince hafif farklı renk
+        pressed && { opacity: 0.7 },           // SADECE opacity değişiyor
+      ]}
+      onPress={() => toggleCashierItemSelection(unit.unitKey)}
+    >
+      <Text style={styles.cashierOrderText}>
+        {unit.name} - TL {unit.price.toFixed(2)} [
+        {kitchenStatus} | {servedStatus} | {paidStatus}]
+      </Text>
+    </Pressable>
+  );
+})}
 
 
-                  return (
-                    <Pressable
-                      key={unit.unitKey}
-                      style={[
-                        styles.cashierOrderRow,
-                        styles.cashierOrderRowUnpaid,
-                        isSelected && styles.cashierOrderRowSelected,
-                      ]}
-                      onPress={() =>
-                        toggleCashierItemSelection(unit.unitKey)
-                      }
-                    >
-                      <Text style={styles.cashierOrderText}>
-                        {unit.name} - TL {unit.price.toFixed(2)} [
-                        {kitchenStatus} | {servedStatus} | {paidStatus}]
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-
-                {/* PAID ITEMS */}
-                {paidUnits.length > 0 && (
-                  <View style={{ marginTop: 6 }}>
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        color: '#555',
-                        marginBottom: 2,
-                      }}
-                    >
-                      Paid items:
-                    </Text>
-                    {paidUnits.map((unit) => {
-                      const kitchenStatus =
-                        unit.status === 'READY' ? 'READY' : 'PENDING';
-                      const servedStatus = unit.isServed
-                        ? 'SERVED'
-                        : 'NOT SERVED';
-                      const paidStatus = 'PAID';
-
-                      return (
-                        <View
-                          key={unit.unitKey}
-                          style={[
-                            styles.cashierOrderRow,
-                            styles.cashierOrderRowPaid,
-                          ]}
-                        >
-                          <Text style={styles.cashierOrderText}>
-                            {unit.name} - TL {unit.price.toFixed(2)} [
-                            {kitchenStatus} | {servedStatus} | {paidStatus}]
+                      {/* PAID items */}
+                      {paidUnits.length > 0 && (
+                        <View style={{ marginTop: 6 }}>
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              color: '#555',
+                              marginBottom: 2,
+                            }}
+                          >
+                            Paid items:
                           </Text>
+                          {paidUnits.map((unit) => {
+                            const kitchenStatus =
+                              getKitchenStatusForUnit(unit);
+                            const servedStatus =
+                              getServedStatusForUnit(unit);
+                            const paidStatus =
+                              getPaidStatusForUnit(unit);
+
+                            return (
+                              <View
+                                key={unit.unitKey}
+                                style={[
+                                  styles.cashierOrderRow,
+                                  styles.cashierOrderRowPaid,
+                                ]}
+                              >
+                                <Text
+                                  style={styles.cashierOrderText}
+                                >
+                                  {unit.name} - TL{' '}
+                                  {unit.price.toFixed(2)} [
+                                  {kitchenStatus} | {servedStatus}{' '}
+                                  | {paidStatus}]
+                                </Text>
+                              </View>
+                            );
+                          })}
                         </View>
-                      );
-                    })}
-                  </View>
-                )}
+                      )}
 
-                {/* Selected & Pay */}
-                <View style={styles.cashierPayRow}>
-                  <Text style={styles.cashierSummaryText}>
-                    Selected: TL {selectedAmount.toFixed(2)}
-                  </Text>
-                  <Button
-                    title="Pay"
-                    color={selectedAmount > 0 ? '#27ae60' : '#aaa'}
-                    onPress={() => paySelectedItemsForTable(tableKey)}
-                    disabled={selectedAmount === 0}
-                  />
+                      {/* Pay */}
+                      <View style={styles.cashierPayRow}>
+                        <Text
+                          style={styles.cashierSummaryText}
+                        >
+                          Selected: TL{' '}
+                          {selectedAmount.toFixed(2)}
+                        </Text>
+                        <Button
+                          title="Pay"
+                          color={
+                            selectedAmount > 0
+                              ? '#27ae60'
+                              : '#aaa'
+                          }
+                          onPress={() =>
+                            paySelectedItemsForTable(tableKey)
+                          }
+                          disabled={selectedAmount === 0}
+                        />
+                      </View>
+                    </>
+                  )}
                 </View>
-              </>
-            )}
-          </View>
-        );
-      }}
-    />
-  </View>
-)}
-
-
-
+              );
+            }}
+          />
+        </View>
+      )}
 
 
     </View>
@@ -2415,5 +2669,85 @@ drinkInlineCounter: {
   marginTop: 6,
   gap: 12,
 },
+
+  // --- DRINK inline counter ---
+  productCardWrapper: {
+    width: '48%',
+    marginBottom: 12,
+  },
+  drinkInlineCounter: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 12,
+  },
+
+  // ----- CASHIER / WAITER / KITCHEN ortak kartlar -----
+  cashierContainer: {
+    flex: 1,
+    marginTop: 16,
+  },
+  cashierTableCard: {
+    marginBottom: 10,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    backgroundColor: '#fafafa',
+  },
+  cashierTableTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6,
+    color: '#333',
+  },
+  cashierSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  cashierSummaryText: {
+    fontSize: 12,
+    color: '#333',
+  },
+  cashierSelectAllRow: {
+    marginTop: 8,
+    marginBottom: 4,
+    alignItems: 'flex-start',
+  },
+
+cashierOrderRow: {
+  paddingVertical: 6,
+  borderTopWidth: 1,
+  borderTopColor: '#eee',
+},
+
+cashierOrderRowUnpaid: {
+  backgroundColor: '#ffecec', // hafif kırmızımsı
+},
+
+cashierOrderRowPaid: {
+  backgroundColor: '#d6f5dd', // yeşilimsi (zaten vardı)
+},
+
+cashierOrderRowSelected: {
+  // sadece hafif vurgu; border yok artık
+  backgroundColor: '#fdf6d9', // çok hafif sarı/kremsi ton
+},
+
+cashierOrderText: {
+  fontSize: 13,
+  color: '#333',
+},
+
+
+  cashierPayRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+
 
 });
