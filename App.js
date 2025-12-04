@@ -8,6 +8,8 @@ import {
   Text,
   Pressable,
   Image,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import GoalItem from './components/GoalItem';
 
@@ -416,6 +418,8 @@ function buildUnitsForTable(tableKey, tableOrders) {
 }
 
 function handleProductPress(item) {
+  console.log('handleProductPress ->', item.id);
+
   const needsCustomization = ['kofte-ekmek', 'hamburger', 'patso', 'karisik-tost', 'waffle']
     .includes(item.id);
   const needsOnion = item.id === 'kofte-ekmek';
@@ -425,24 +429,21 @@ function handleProductPress(item) {
     setQuantity(1);
 
     if (needsOnion) {
-      // sadece köfte ekmekte otomatik 1 soğanlı
       setOnionYes(1);
       setOnionNo(0);
     } else {
-      // diğer ürünlerde soğan değerleri sıfırlansın
       setOnionYes(0);
       setOnionNo(0);
     }
 
-    // setDrinkCounts(...) ARTIK YOK
     setSauces({ ketcap: false, mayonez: false, aci: false });
     setNoteText('');
     setCustomModalVisible(true);
   } else {
-    // içecekler buraya düşecek
     addItemToBasket(item);
   }
 }
+
 
 function toggleKitchenItemSelection(unitKey) {
   setSelectedKitchenItems((prev) =>
@@ -1024,16 +1025,13 @@ const tablesForCashier = Object.entries(
   <View style={styles.waiterRoot}>
     {/* Table selector */}
     <View style={styles.tableSelector}>
-      {/* Header tıklanınca aç/kapa */}
-     <Pressable
-  style={styles.tableSelectorHeader}
-  onPress={() => setTablesExpanded(prev => !prev)}
->
-  <Text style={styles.sectionTitle}>Masa Seç</Text>
-</Pressable>
+      <Pressable
+        style={styles.tableSelectorHeader}
+        onPress={() => setTablesExpanded((prev) => !prev)}
+      >
+        <Text style={styles.sectionTitle}>Masa Seç</Text>
+      </Pressable>
 
-
-      {/* Sadece açıksa masaları göster */}
       {tablesExpanded && (
         <View style={styles.tablesRow}>
           {TABLES.map((tableId) => (
@@ -1062,7 +1060,7 @@ const tablesForCashier = Object.entries(
 
     {/* Main waiter layout */}
     <View style={styles.waiterContent}>
-      {/* 🔽 KATEGORİLER: ÜSTTE, TEK SATIR / WRAP */}
+      {/* KATEGORİLER: ÜSTTE, TEK SATIR / WRAP */}
       <View style={styles.categoryRow}>
         {CATEGORIES.map((cat) => (
           <Pressable
@@ -1087,7 +1085,7 @@ const tablesForCashier = Object.entries(
         ))}
       </View>
 
-      {/* 🔽 ALTTA: ÜRÜN GRID */}
+      {/* ALTTA: ÜRÜN GRID */}
       <View style={styles.menuGridContainer}>
         <Text style={styles.gridTitle}>
           {CATEGORIES.find((c) => c.id === selectedCategory)?.label ||
@@ -1152,14 +1150,254 @@ const tablesForCashier = Object.entries(
 
     {/* CUSTOMIZATION MODAL */}
     {customModalVisible && customProduct && (
-      // ... buradan sonrası senin mevcut modal & cart kodun aynı kalsın ...
-      // aynen devam
-      <>
-        {/* senin modal, validation modal, cartBar vs */}
-      </>
+      <View style={styles.customModalOverlay}>
+        <View style={styles.customModalBox}>
+          <ScrollView
+            contentContainerStyle={styles.customModalContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Product header */}
+            <View style={styles.customTopRow}>
+              <Text style={styles.customTitle}>{customProduct.name}</Text>
+
+              <Image
+                source={PRODUCT_IMAGES[customProduct.id]}
+                style={styles.customProductImage}
+                resizeMode="cover"
+              />
+            </View>
+
+            {/* QUANTITY */}
+            <View style={styles.quantityRow}>
+              <Pressable style={styles.qtyButton} onPress={decreaseQuantity}>
+                <Text style={styles.qtyButtonText}>-</Text>
+              </Pressable>
+
+              <Text style={styles.qtyText}>{quantity}</Text>
+
+              <Pressable style={styles.qtyButton} onPress={increaseQuantity}>
+                <Text style={styles.qtyButtonText}>+</Text>
+              </Pressable>
+            </View>
+
+            {/* ONION SECTION – sadece köfte ekmek */}
+            {customProduct.id === 'kofte-ekmek' && (
+              <>
+                <Text style={styles.optionTitle}>Soğan Seçimi</Text>
+                <Text style={styles.optionSubtitle}>
+                  Toplam: {onionYes + onionNo} / {quantity}
+                </Text>
+
+                <View style={styles.onionRow}>
+                  {/* SOĞANLI */}
+                  <View style={styles.onionOption}>
+                    <Image
+                      source={ONION_IMAGE}
+                      style={styles.optionImage}
+                      resizeMode="cover"
+                    />
+                    <Text style={styles.onionLabel}>Soğanlı</Text>
+
+                    <View style={styles.onionCountRow}>
+                      <Pressable
+                        style={styles.qtyButton}
+                        onPress={() => {
+                          if (onionYes > 0) {
+                            setOnionYes(onionYes - 1);
+                            setOnionNo(onionNo + 1);
+                          }
+                        }}
+                      >
+                        <Text style={styles.qtyButtonText}>-</Text>
+                      </Pressable>
+
+                      <Text style={styles.qtyText}>{onionYes}</Text>
+
+                      <Pressable
+                        style={styles.qtyButton}
+                        onPress={() => {
+                          if (onionNo > 0) {
+                            setOnionYes(onionYes + 1);
+                            setOnionNo(onionNo - 1);
+                          }
+                        }}
+                      >
+                        <Text style={styles.qtyButtonText}>+</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+
+                  {/* SOĞANSIZ */}
+                  <View style={styles.onionOption}>
+                    <View style={styles.onionNoWrapper}>
+                      <Image
+                        source={NO_ONION_IMAGE}
+                        style={[styles.optionImage, styles.optionImageDisabled]}
+                        resizeMode="cover"
+                      />
+                      <View
+                        style={[
+                          styles.onionNoCrossLine,
+                          styles.onionNoCrossLineReverse,
+                        ]}
+                      />
+                    </View>
+                    <Text style={styles.onionLabel}>Soğansız</Text>
+
+                    <View style={styles.onionCountRow}>
+                      <Pressable
+                        style={styles.qtyButton}
+                        onPress={() => {
+                          if (onionNo > 0) {
+                            setOnionNo(onionNo - 1);
+                            setOnionYes(onionYes + 1);
+                          }
+                        }}
+                      >
+                        <Text style={styles.qtyButtonText}>-</Text>
+                      </Pressable>
+
+                      <Text style={styles.qtyText}>{onionNo}</Text>
+
+                      <Pressable
+                        style={styles.qtyButton}
+                        onPress={() => {
+                          if (onionYes > 0) {
+                            setOnionNo(onionNo + 1);
+                            setOnionYes(onionYes - 1);
+                          }
+                        }}
+                      >
+                        <Text style={styles.qtyButtonText}>+</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+              </>
+            )}
+
+            {/* SAUCE SECTION */}
+            {(customProduct.id === 'patso' ||
+              customProduct.id === 'karisik-tost') && (
+              <>
+                <Text style={styles.optionTitle}>Soslar</Text>
+                <View style={styles.sauceRowContainer}>
+                  {SAUCE_OPTIONS.map((s) => {
+                    const isActive = sauces[s.id];
+                    return (
+                      <Pressable
+                        key={s.id}
+                        style={[
+                          styles.sauceItem,
+                          isActive && styles.sauceItemActive,
+                        ]}
+                        onPress={() =>
+                          setSauces((prev) => ({
+                            ...prev,
+                            [s.id]: !prev[s.id],
+                          }))
+                        }
+                      >
+                        <Image
+                          source={SAUCE_IMAGES[s.id]}
+                          style={styles.sauceImage}
+                          resizeMode="contain"
+                        />
+                        <Text style={styles.sauceLabel}>{s.label}</Text>
+                        <View
+                          style={[
+                            styles.checkbox,
+                            isActive && styles.checkboxActive,
+                          ]}
+                        >
+                          {isActive && (
+                            <Text style={styles.checkboxCheck}>✓</Text>
+                          )}
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
+            {/* NOTE */}
+            <Text style={styles.optionTitle}>Ek Not</Text>
+            <TextInput
+              style={styles.noteInput}
+              placeholder="Örn: Ekmeği az kızartın, acısız olsun..."
+              placeholderTextColor="#aaa"
+              multiline
+              value={noteText}
+              onChangeText={setNoteText}
+            />
+          </ScrollView>
+
+          {/* MODAL BUTTONS – hep en altta görünür */}
+          <View style={styles.modalButtonsRow}>
+            <Pressable
+              style={[styles.modalButton, styles.modalCancelButton]}
+              onPress={() => setCustomModalVisible(false)}
+            >
+              <Text style={styles.modalButtonText}>İptal</Text>
+            </Pressable>
+
+            <Pressable
+              style={[styles.modalButton, styles.modalConfirmButton]}
+              onPress={handleCustomizationComplete}
+            >
+              <Text style={styles.modalButtonText}>Siparişi Ekle</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
     )}
+
+    {/* VALIDATION MODAL */}
+    {validationModalVisible && (
+      <View style={styles.validationOverlay}>
+        <View style={styles.validationBox}>
+          <Text style={styles.validationText}>
+            {validationMessage}
+          </Text>
+          <Button
+            title="Tamam"
+            onPress={() => setValidationModalVisible(false)}
+          />
+        </View>
+      </View>
+    )}
+
+    {/* BOTTOM CART BAR */}
+    <View style={styles.cartBar}>
+      <View>
+        <Text style={styles.cartTitle}>Siparişim</Text>
+        <Text style={styles.cartSubtitle}>
+          {totalItems} ürün | TL {totalPrice.toFixed(2)}
+        </Text>
+        {selectedTable && (
+          <Text style={styles.cartSubtitle}>
+            Masa {selectedTable}
+          </Text>
+        )}
+      </View>
+      <View style={styles.cartButtons}>
+        <Button
+          title="Temizle"
+          color="#c0392b"
+          onPress={clearBasket}
+        />
+        <Button
+          title="Siparişi Gönder"
+          color={selectedTable && basket.length > 0 ? '#27ae60' : '#aaa'}
+          onPress={submitOrder}
+          disabled={!selectedTable || basket.length === 0}
+        />
+      </View>
+    </View>
   </View>
 )}
+
 
 
       {mode === 'KITCHEN' && (
@@ -1893,12 +2131,7 @@ waiterContent: {
 
 // categoryColumn artık kullanılmıyor, istersen silebilirsin
 // categoryRow: yeni stil
-categoryRow: {
-  flexDirection: 'row',
-  flexWrap: 'wrap',
-  marginBottom: 8,
- 
-},
+
 
 categoryButton: {
   paddingVertical: 18,
@@ -1978,16 +2211,7 @@ categoryButton: {
   },
 
   // ----- CART BAR -----
-  cartBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderTopWidth: 1,
-    borderColor: '#ddd',
-    backgroundColor: '#fafafa',
-  },
+
 
   cartTitle: {
     fontSize: 16,
@@ -2024,19 +2248,16 @@ categoryButton: {
   },
 
   // ----- CUSTOMIZATION MODAL -----
-  customModal: {
-    position: 'absolute',
-    top: -71,
-    left: 10,
-    right: 10,
-    bottom: 260,
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 14,
-    elevation: 15,
-    borderWidth: 3,
-    borderColor: '#0b6623',
-  },
+
+
+
+
+customModalScroll: {
+  paddingBottom: 10,
+},
+
+
+
 
   customTopRow: {
     alignItems: 'center',
@@ -2575,6 +2796,86 @@ cashierOrderText: {
 tableSelectorToggle: {
   fontSize: 16,
   color: '#666',
+},
+
+waiterRoot: {
+  flex: 1,
+  paddingBottom: 80,   // cart bar için boşluk
+},
+
+categoryRow: {
+  flexDirection: 'row',
+  flexWrap: 'wrap',
+  marginBottom: 8,
+  gap: 6,
+},
+
+cartBar: {
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  bottom: 0,
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  paddingVertical: 10,
+  paddingHorizontal: 12,
+  borderTopWidth: 1,
+  borderColor: '#ddd',
+  backgroundColor: '#fafafa',
+},
+
+customModalOverlay: {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: 'rgba(0,0,0,0.35)',
+  justifyContent: 'center',
+  alignItems: 'center',
+  zIndex: 20,
+},
+
+customModalBox: {
+  width: '90%',
+  maxHeight: '85%',
+  backgroundColor: '#fff',
+  borderRadius: 20,
+  padding: 14,
+  borderWidth: 2,
+  borderColor: '#0b6623',
+},
+
+customModalContent: {
+  paddingBottom: 16,
+},
+
+modalButtonsRow: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  marginTop: 10,
+},
+
+modalButton: {
+  flex: 1,
+  paddingVertical: 10,
+  borderRadius: 10,
+  alignItems: 'center',
+  marginHorizontal: 4,
+},
+
+modalCancelButton: {
+  backgroundColor: '#c0392b',
+},
+
+modalConfirmButton: {
+  backgroundColor: '#27ae60',
+},
+
+modalButtonText: {
+  color: '#fff',
+  fontWeight: '700',
 },
 
 
