@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -52,7 +52,7 @@ const POPULAR_IDS = [
 ];
 
 const CATEGORIES = [
-  { id: 'POPULAR', label: 'Popüler Ürünler' },
+  { id: 'POPULAR', label: 'Popüler' },
   { id: 'MEAT', label: 'Et Menü' },
   { id: 'TOAST', label: 'Tostlar' },
   { id: 'DESSERT', label: 'Tatlı & Kahve' },
@@ -105,12 +105,58 @@ const SAUCE_IMAGES = {
 const ONION_IMAGE = require('./assets/onion.jpg');
 const NO_ONION_IMAGE = require('./assets/no-onion.jpg');
 
+// --- BACKEND CONFIG ---
+const API_URL = 'http://192.168.0.13:3000'; // ← BURAYI kendi IP adresinle değiştir
+
+async function fetchOrdersFromServer() {
+  try {
+    const res = await fetch(`${API_URL}/orders`);
+    if (!res.ok) {
+      console.log('Failed to fetch orders from server');
+      return [];
+    }
+    const data = await res.json();
+    // data array değilse fallback
+    if (!Array.isArray(data)) return [];
+    return data;
+  } catch (err) {
+    console.log('Error fetching orders from server:', err);
+    return [];
+  }
+}
+
+async function syncOrdersToServer(newOrders) {
+  try {
+    await fetch(`${API_URL}/orders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newOrders),
+    });
+  } catch (err) {
+    console.log('Error syncing orders to server:', err);
+  }
+}
 
 
 
 export default function App() {
-  const [orders, setOrders] = useState([]);
+  
+
+    const [orders, setOrders] = useState([]);// BU KALACAK orders, setOrders 
   const [selectedTable, setSelectedTable] = useState(null);
+
+  // 👇 Server’a da push eden wrapper
+  function updateOrders(updater) {
+    setOrders((current) => {
+      const next = updater(current);
+      // async ama fire-and-forget
+      syncOrdersToServer(next);
+      return next;
+    });
+  }
+
+
+
 
   const [mode, setMode] = useState('ORDER'); // ORDER | KITCHEN | WAITER | CASHIER
 
@@ -119,6 +165,7 @@ export default function App() {
   const [selectedKitchenItems, setSelectedKitchenItems] = useState([]);
   const [expandedTables, setExpandedTables] = useState({});
 
+const [tablesExpanded, setTablesExpanded] = useState(true);
 
 
   
@@ -151,6 +198,33 @@ const [drinkCounts, setDrinkCounts] = useState({
   const [validationMessage, setValidationMessage] = useState('');
 
   const [noteText, setNoteText] = useState('');
+
+    // Uygulama açılınca server’dan orders çek + 2 saniyede bir yenile
+  React.useEffect(() => {
+    let isMounted = true;
+
+    async function loadInitial() {
+      const serverOrders = await fetchOrdersFromServer();
+      if (isMounted) {
+        setOrders(serverOrders);
+      }
+    }
+
+    loadInitial();
+
+    const interval = setInterval(async () => {
+      const serverOrders = await fetchOrdersFromServer();
+      if (isMounted) {
+        setOrders(serverOrders);
+      }
+    }, 2000); // 2 saniyede bir
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
 
   // ---------- FILTERED MENU ----------
 const filteredMenuItems = MENU_ITEMS.filter((item) => {
@@ -232,7 +306,7 @@ const selectedItems = basket.map((item) => ({
     .filter(Boolean)
     .join(' | ');
 
-  setOrders((currentOrders) => [
+  updateOrders((currentOrders) => [
     ...currentOrders,
     {
       id: Math.random().toString(),
@@ -250,7 +324,7 @@ const selectedItems = basket.map((item) => ({
 
   // WAITER: remove order (served)
   function deleteOrderHandler(id) {
-    setOrders((currentOrders) =>
+    updateOrders((currentOrders) =>
       currentOrders.filter((order) => order.id !== id)
     );
   }
@@ -272,55 +346,69 @@ function getPaidStatusForUnit(unit) {
 }
 
 
-  function buildUnitsForTable(tableKey, tableOrders) {
-    const units = [];
+function buildUnitsForTable(tableKey, tableOrders) {
+  console.log('buildUnitsForTable called with:', tableKey, tableOrders);
 
-    tableOrders.forEach((order) => {
-      order.items.forEach((it, itemIndex) => {
-        const qty = it.quantity || 0;
-        const readyCount = it.readyCount || 0;
-        const servedCount = it.servedCount || 0;
-        const paidCount = it.paidCount || 0;
+  const units = [];
 
-        // Menüdeki tanımı bul – içecek mi değil mi öğrenelim
-        const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
-        const isDrink = menuDef?.category === 'DRINK';
-
-        for (let unitIndex = 0; unitIndex < qty; unitIndex++) {
-          const unitKey = `${order.id}|${itemIndex}|${unitIndex}|${tableKey}`;
-
-          units.push({
-            unitKey,
-            orderId: order.id,
-            itemIndex,
-            unitIndex,
-            name: it.name,
-            price: it.price,
-            note: it.note,
-            isDrink,
-            isReady: !isDrink && unitIndex < readyCount,
-            isServed: unitIndex < servedCount,
-            isPaid: unitIndex < paidCount,
-          });
-        }
-      });
-    });
-
+  // Güvenlik: tableOrders yoksa veya array değilse, boş dön
+  if (!Array.isArray(tableOrders)) {
     return units;
   }
+
+  tableOrders.forEach((order) => {
+    // 👉 Backend'ten gelen eski/simple kayıtlar items içermiyor
+    // Bunları atlıyoruz ki app çakılmasın
+    if (!order || !Array.isArray(order.items)) {
+      return;
+    }
+
+    order.items.forEach((it, itemIndex) => {
+      const qty = it.quantity || 0;
+      const readyCount = it.readyCount || 0;
+      const servedCount = it.servedCount || 0;
+      const paidCount = it.paidCount || 0;
+
+      const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
+      const isDrink = menuDef?.category === 'DRINK';
+
+      for (let unitIndex = 0; unitIndex < qty; unitIndex++) {
+        const unitKey = `${order.id}|${itemIndex}|${unitIndex}|${tableKey}`;
+
+        units.push({
+          unitKey,
+          orderId: order.id,
+          itemIndex,
+          unitIndex,
+          name: it.name,
+          price: it.price,
+          note: it.note,
+          isDrink,
+          isReady: !isDrink && unitIndex < readyCount,
+          isServed: unitIndex < servedCount,
+          isPaid: unitIndex < paidCount,
+        });
+      }
+    });
+  });
+
+  return units;
+}
+
+
 
   //------------------------------
 
   // KITCHEN: mark PENDING → READY
   function markOrderReady(id) {
-    setOrders((currentOrders) =>
+    updateOrders((currentOrders) =>
       currentOrders.map((order) =>
         order.id === id ? { ...order, status: 'READY' } : order
       )
     );
   }
   function toggleOrderPaid(id) {
-  setOrders((currentOrders) =>
+  updateOrders((currentOrders) =>
     currentOrders.map((order) =>
       order.id === id ? { ...order, paid: !order.paid } : order
     )
@@ -390,7 +478,7 @@ function decrementItemInBasketById(id) {
 
 
 function readySelectedItemsForTable(tableKey) {
-  setOrders((currentOrders) => {
+  updateOrders((currentOrders) => {
     // Bu masaya ait seçili unitKey'ler
     const selectedForTable = selectedKitchenItems.filter((k) =>
       k.endsWith(`|${tableKey}`)
@@ -521,42 +609,7 @@ addItemToBasket({
     }, {})
   );
 
-  // ---- Order item'larını tek tek unit haline getir ----
-  function buildUnitsForTable(tableKey, tableOrders) {
-    const units = [];
 
-    tableOrders.forEach((order) => {
-      order.items.forEach((it, itemIndex) => {
-        const qty = it.quantity || 0;
-        const readyCount = it.readyCount || 0;
-        const servedCount = it.servedCount || 0;
-        const paidCount = it.paidCount || 0;
-
-        const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
-        const isDrink = menuDef?.category === 'DRINK';
-
-        for (let unitIndex = 0; unitIndex < qty; unitIndex++) {
-          const unitKey = `${order.id}|${itemIndex}|${unitIndex}|${tableKey}`;
-
-          units.push({
-            unitKey,
-            orderId: order.id,
-            itemIndex,
-            unitIndex,
-            name: it.name,
-            price: it.price,
-            note: it.note,
-            isDrink,
-            isReady: !isDrink && unitIndex < readyCount,
-            isServed: unitIndex < servedCount,
-            isPaid: unitIndex < paidCount,
-          });
-        }
-      });
-    });
-
-    return units;
-  }
 
   // ---- SEÇİM TOGGLE FONKSİYONLARI ----
   function toggleCashierItemSelection(unitKey) {
@@ -585,7 +638,7 @@ addItemToBasket({
 
   // ---- ACTIONS: KITCHEN → READY ----
   function readySelectedItemsForTable(tableKey) {
-    setOrders((currentOrders) => {
+    updateOrders((currentOrders) => {
       const selectedForTable = selectedKitchenItems.filter((k) =>
         k.endsWith(`|${tableKey}`)
       );
@@ -646,7 +699,7 @@ addItemToBasket({
 
   // ---- ACTIONS: WAITER → SERVED ----
   function serveSelectedItemsForTable(tableKey) {
-    setOrders((currentOrders) => {
+    updateOrders((currentOrders) => {
       const selectedForTable = selectedWaiterItems.filter((k) =>
         k.endsWith(`|${tableKey}`)
       );
@@ -693,7 +746,7 @@ addItemToBasket({
 
   // ---- ACTIONS: CASHIER → PAID ----
   function paySelectedItemsForTable(tableKey) {
-    setOrders((currentOrders) => {
+    updateOrders((currentOrders) => {
       const selectedForTable = selectedCashierItems.filter((k) =>
         k.endsWith(`|${tableKey}`)
       );
@@ -821,7 +874,7 @@ function toggleWaiterItemSelection(unitKey) {
 }
 
 function paySelectedItemsForTable(tableKey) {
-  setOrders((currentOrders) => {
+  updateOrders((currentOrders) => {
     const toPayMap = {};
 
     selectedCashierItems.forEach((unitKey) => {
@@ -872,7 +925,7 @@ function paySelectedItemsForTable(tableKey) {
 }
 
 function serveSelectedItemsForTable(tableKey) {
-  setOrders((currentOrders) => {
+  updateOrders((currentOrders) => {
     // Bu masaya ait seçili unitKey'ler
     const selectedForTable = selectedWaiterItems.filter((k) =>
       k.endsWith(`|${tableKey}`)
@@ -945,416 +998,169 @@ const tablesForCashier = Object.entries(
       {/* Mode switcher */}
 <View style={styles.modeSwitchContainer}>
   <Button
-    title="Order Mode"
+    title="Order"
     color={mode === 'ORDER' ? '#0acc2aff' : '#888'}
     onPress={() => setMode('ORDER')}
   />
   <Button
-    title="Waiter Mode"
+    title="Waiter"
     color={mode === 'WAITER' ? '#0acc2aff' : '#888'}
     onPress={() => setMode('WAITER')}
   />
   <Button
-    title="Kitchen Mode"
+    title="Kitchen"
     color={mode === 'KITCHEN' ? '#0acc2aff' : '#888'}
     onPress={() => setMode('KITCHEN')}
   />
   <Button
-    title="Cashier Mode"
+    title="Cashier"
     color={mode === 'CASHIER' ? '#0acc2aff' : '#888'}
     onPress={() => setMode('CASHIER')}
   />
 </View>
 
 
+{mode === 'ORDER' && (
+  <View style={styles.waiterRoot}>
+    {/* Table selector */}
+    <View style={styles.tableSelector}>
+      {/* Header tıklanınca aç/kapa */}
+     <Pressable
+  style={styles.tableSelectorHeader}
+  onPress={() => setTablesExpanded(prev => !prev)}
+>
+  <Text style={styles.sectionTitle}>Masa Seç</Text>
+</Pressable>
 
-      {mode === 'ORDER' && (
-        <View style={styles.waiterRoot}>
-          {/* Table selector */}
-          <View style={styles.tableSelector}>
-            <Text style={styles.sectionTitle}>Masa Seç</Text>
-            <View style={styles.tablesRow}>
-              {TABLES.map((tableId) => (
-                <Pressable
-                  key={tableId}
-                  onPress={() => setSelectedTable(tableId)}
-                  style={[
-                    styles.tableChip,
-                    selectedTable === tableId && styles.tableChipSelected,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.tableChipText,
-                      selectedTable === tableId &&
-                        styles.tableChipTextSelected,
-                    ]}
-                  >
-                    Masa {tableId}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
 
-          {/* Main waiter layout */}
-          <View style={styles.waiterContent}>
-            {/* Category column */}
-            <View style={styles.categoryColumn}>
-              {CATEGORIES.map((cat) => (
-                <Pressable
-                  key={cat.id}
-                  onPress={() => setSelectedCategory(cat.id)}
-                  style={[
-                    styles.categoryButton,
-                    selectedCategory === cat.id &&
-                      styles.categoryButtonSelected,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.categoryText,
-                      selectedCategory === cat.id &&
-                        styles.categoryTextSelected,
-                    ]}
-                  >
-                    {cat.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            {/* Product grid */}
-            <View style={styles.menuGridContainer}>
-              <Text style={styles.gridTitle}>
-                {CATEGORIES.find((c) => c.id === selectedCategory)?.label ||
-                  'Ürünler'}
-              </Text>
-
-<FlatList
-  data={filteredMenuItems}
-  keyExtractor={(item) => item.id}
-  numColumns={2}
-  contentContainerStyle={styles.menuList}
-  renderItem={({ item }) => {
-    const countInBasket = getBasketCountById(item.id);
-    const isDrink = item.category === 'DRINK';
-
-    return (
-      <View style={styles.productCardWrapper}>
-        <Pressable
-          style={styles.productCard}
-          onPress={() => handleProductPress(item)}
-        >
-          <Image
-            source={PRODUCT_IMAGES[item.id]}
-            style={styles.productImage}
-            resizeMode="cover"
-          />
-
-          <Text style={styles.productName}>{item.name}</Text>
-          <Text style={styles.productPrice}>
-            TL {item.price.toFixed(2)}
-          </Text>
-
-          {/* 🔥 DRINK ise altına - sayı + counter koy */}
-          {isDrink && (
-            <View style={styles.drinkInlineCounter}>
-              <Pressable
-                style={styles.qtyButton}
-                onPress={() => decrementItemInBasketById(item.id)}
+      {/* Sadece açıksa masaları göster */}
+      {tablesExpanded && (
+        <View style={styles.tablesRow}>
+          {TABLES.map((tableId) => (
+            <Pressable
+              key={tableId}
+              onPress={() => setSelectedTable(tableId)}
+              style={[
+                styles.tableChip,
+                selectedTable === tableId && styles.tableChipSelected,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.tableChipText,
+                  selectedTable === tableId &&
+                    styles.tableChipTextSelected,
+                ]}
               >
-                <Text style={styles.qtyButtonText}>-</Text>
-              </Pressable>
-
-              <Text style={styles.qtyText}>{countInBasket}</Text>
-
-              <Pressable
-                style={styles.qtyButton}
-                onPress={() => handleProductPress(item)}
-              >
-                <Text style={styles.qtyButtonText}>+</Text>
-              </Pressable>
-            </View>
-          )}
-        </Pressable>
-      </View>
-    );
-  }}
-/>
-
-
-            </View>
-          </View>
-
-          {/* CUSTOMIZATION MODAL */}
-          {customModalVisible && customProduct && (
-            <View style={styles.customModal}>
-              {/* Product header */}
-              <View style={styles.customTopRow}>
-                <Text style={styles.customTitle}>
-                  {customProduct.name}
-                </Text>
-               
-                <Image
-                  source={PRODUCT_IMAGES[customProduct.id]}
-                  style={styles.customProductImage}
-                  resizeMode="cover"
-                />
-              </View>
-
-              {/* QUANTITY */}
-              <View style={styles.quantityRow}>
-                <Pressable
-                  style={styles.qtyButton}
-                  onPress={decreaseQuantity}
-                >
-                  <Text style={styles.qtyButtonText}>-</Text>
-                </Pressable>
-
-                <Text style={styles.qtyText}>{quantity}</Text>
-
-                <Pressable
-                  style={styles.qtyButton}
-                  onPress={increaseQuantity}
-                >
-                  <Text style={styles.qtyButtonText}>+</Text>
-                </Pressable>
-              </View>
-
-              {/* ONION SECTION */}
-              {customProduct.id === 'kofte-ekmek' && (
-                <>
-                  <Text style={styles.optionTitle}>
-                    Soğan Seçimi
-                  </Text>
-                  <Text style={styles.optionSubtitle}>
-                    Toplam: {onionYes + onionNo} / {quantity}
-                  </Text>
-
-                  <View style={styles.onionRow}>
-                    {/* SOĞANLI */}
-                    <View style={styles.onionOption}>
-                      <Image
-                        source={ONION_IMAGE}
-                        style={styles.optionImage}
-                        resizeMode="cover"
-                      />
-                      <Text style={styles.onionLabel}>Soğanlı</Text>
-
-                      <View style={styles.onionCountRow}>
-                        <Pressable
-                          style={styles.qtyButton}
-                          onPress={() => {
-                            if (onionYes > 0) {
-                              setOnionYes(onionYes - 1);
-                              setOnionNo(onionNo + 1);
-                            }
-                          }}
-                        >
-                          <Text style={styles.qtyButtonText}>-</Text>
-                        </Pressable>
-
-                        <Text style={styles.qtyText}>
-                          {onionYes}
-                        </Text>
-
-                        <Pressable
-                          style={styles.qtyButton}
-                          onPress={() => {
-                            if (onionNo > 0) {
-                              setOnionYes(onionYes + 1);
-                              setOnionNo(onionNo - 1);
-                            }
-                          }}
-                        >
-                          <Text style={styles.qtyButtonText}>+</Text>
-                        </Pressable>
-                      </View>
-                    </View>
-
-                    {/* SOĞANSIZ */}
-                    <View style={styles.onionOption}>
-                      <View style={styles.onionNoWrapper}>
-                        <Image
-                          source={NO_ONION_IMAGE}
-                          style={[
-                            styles.optionImage,
-                            styles.optionImageDisabled,
-                          ]}
-                          resizeMode="cover"
-                        />
-                        <View />
-                        <View
-                          style={[
-                            styles.onionNoCrossLine,
-                            styles.onionNoCrossLineReverse,
-                          ]}
-                        />
-                      </View>
-                      <Text style={styles.onionLabel}>
-                        Soğansız
-                      </Text>
-
-                      <View style={styles.onionCountRow}>
-                        <Pressable
-                          style={styles.qtyButton}
-                          onPress={() => {
-                            if (onionNo > 0) {
-                              setOnionNo(onionNo - 1);
-                              setOnionYes(onionYes + 1);
-                            }
-                          }}
-                        >
-                          <Text style={styles.qtyButtonText}>-</Text>
-                        </Pressable>
-
-                        <Text style={styles.qtyText}>
-                          {onionNo}
-                        </Text>
-
-                        <Pressable
-                          style={styles.qtyButton}
-                          onPress={() => {
-                            if (onionYes > 0) {
-                              setOnionNo(onionNo + 1);
-                              setOnionYes(onionYes - 1);
-                            }
-                          }}
-                        >
-                          <Text style={styles.qtyButtonText}>+</Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                  </View>
-                </>
-              )}
-
-         
-
-              {/* SAUCE SECTION */}
-              {(customProduct.id === 'patso' ||
-                customProduct.id === 'karisik-tost') && (
-                <>
-                  <Text style={styles.optionTitle}>Soslar</Text>
-                
-
-                  <View style={styles.sauceRowContainer}>
-                    {SAUCE_OPTIONS.map((s) => {
-                      const isActive = sauces[s.id];
-                      return (
-                        <Pressable
-                          key={s.id}
-                          style={[
-                            styles.sauceItem,
-                            isActive && styles.sauceItemActive,
-                          ]}
-                          onPress={() =>
-                            setSauces((prev) => ({
-                              ...prev,
-                              [s.id]: !prev[s.id],
-                            }))
-                          }
-                        >
-                          <Image
-                            source={SAUCE_IMAGES[s.id]}
-                            style={styles.sauceImage}
-                            resizeMode="contain"
-                          />
-                          <Text style={styles.sauceLabel}>
-                            {s.label}
-                          </Text>
-                          <View
-                            style={[
-                              styles.checkbox,
-                              isActive && styles.checkboxActive,
-                            ]}
-                          >
-                            {isActive && (
-                              <Text style={styles.checkboxCheck}>
-                                ✓
-                              </Text>
-                            )}
-                          </View>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </>
-              )}
-
-              {/* NOTE */}
-              <Text style={styles.optionTitle}>Ek Not</Text>
-              <TextInput
-                style={styles.noteInput}
-                placeholder="Örn: Ekmeği az kızartın, acısız olsun..."
-                placeholderTextColor="#aaa"
-                multiline
-                value={noteText}
-                onChangeText={setNoteText}
-              />
-
-              {/* MODAL BUTTONS */}
-              <View style={styles.modalButtons}>
-                <Button
-                  title="İptal"
-                  color="#c0392b"
-                  onPress={() => setCustomModalVisible(false)}
-                />
-                <Button
-                  title="Siparişe Ekle"
-                  color="#27ae60"
-                  onPress={handleCustomizationComplete}
-                />
-              </View>
-            </View>
-          )}
-
-          {/* VALIDATION MODAL */}
-          {validationModalVisible && (
-            <View style={styles.validationOverlay}>
-              <View style={styles.validationBox}>
-                <Text style={styles.validationText}>
-                  {validationMessage}
-                </Text>
-                <Button
-                  title="Tamam"
-                  onPress={() => setValidationModalVisible(false)}
-                />
-              </View>
-            </View>
-          )}
-
-          {/* Bottom cart bar */}
-          <View style={styles.cartBar}>
-            <View>
-              <Text style={styles.cartTitle}>Siparişim</Text>
-              <Text style={styles.cartSubtitle}>
-                {totalItems} ürün | TL {totalPrice.toFixed(2)}
+                Masa {tableId}
               </Text>
-              {selectedTable && (
-                <Text style={styles.cartSubtitle}>
-                  Masa {selectedTable}
-                </Text>
-              )}
-            </View>
-            <View style={styles.cartButtons}>
-              <Button
-                title="Temizle"
-                color="#c0392b"
-                onPress={clearBasket}
-              />
-          <Button
-  title="Siparişi Gönder"
-  color={selectedTable && basket.length > 0 ? '#27ae60' : '#aaa'}
-  onPress={submitOrder}
-  disabled={!selectedTable || basket.length === 0}
-/>
-
-            </View>
-          </View>
+            </Pressable>
+          ))}
         </View>
       )}
+    </View>
+
+    {/* Main waiter layout */}
+    <View style={styles.waiterContent}>
+      {/* 🔽 KATEGORİLER: ÜSTTE, TEK SATIR / WRAP */}
+      <View style={styles.categoryRow}>
+        {CATEGORIES.map((cat) => (
+          <Pressable
+            key={cat.id}
+            onPress={() => setSelectedCategory(cat.id)}
+            style={[
+              styles.categoryButton,
+              selectedCategory === cat.id &&
+                styles.categoryButtonSelected,
+            ]}
+          >
+            <Text
+              style={[
+                styles.categoryText,
+                selectedCategory === cat.id &&
+                  styles.categoryTextSelected,
+              ]}
+            >
+              {cat.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {/* 🔽 ALTTA: ÜRÜN GRID */}
+      <View style={styles.menuGridContainer}>
+        <Text style={styles.gridTitle}>
+          {CATEGORIES.find((c) => c.id === selectedCategory)?.label ||
+            'Ürünler'}
+        </Text>
+
+        <FlatList
+          data={filteredMenuItems}
+          keyExtractor={(item) => item.id}
+          numColumns={2}
+          contentContainerStyle={styles.menuList}
+          renderItem={({ item }) => {
+            const countInBasket = getBasketCountById(item.id);
+            const isDrink = item.category === 'DRINK';
+
+            return (
+              <View style={styles.productCardWrapper}>
+                <Pressable
+                  style={styles.productCard}
+                  onPress={() => handleProductPress(item)}
+                >
+                  <Image
+                    source={PRODUCT_IMAGES[item.id]}
+                    style={styles.productImage}
+                    resizeMode="cover"
+                  />
+
+                  <Text style={styles.productName}>{item.name}</Text>
+                  <Text style={styles.productPrice}>
+                    TL {item.price.toFixed(2)}
+                  </Text>
+
+                  {/* DRINK ise altına - sayı + counter koy */}
+                  {isDrink && (
+                    <View style={styles.drinkInlineCounter}>
+                      <Pressable
+                        style={styles.qtyButton}
+                        onPress={() =>
+                          decrementItemInBasketById(item.id)
+                        }
+                      >
+                        <Text style={styles.qtyButtonText}>-</Text>
+                      </Pressable>
+
+                      <Text style={styles.qtyText}>{countInBasket}</Text>
+
+                      <Pressable
+                        style={styles.qtyButton}
+                        onPress={() => handleProductPress(item)}
+                      >
+                        <Text style={styles.qtyButtonText}>+</Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </Pressable>
+              </View>
+            );
+          }}
+        />
+      </View>
+    </View>
+
+    {/* CUSTOMIZATION MODAL */}
+    {customModalVisible && customProduct && (
+      // ... buradan sonrası senin mevcut modal & cart kodun aynı kalsın ...
+      // aynen devam
+      <>
+        {/* senin modal, validation modal, cartBar vs */}
+      </>
+    )}
+  </View>
+)}
+
 
       {mode === 'KITCHEN' && (
         <View style={styles.cashierContainer}>
@@ -2079,24 +1885,35 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  waiterContent: {
-    flex: 1,
-    flexDirection: 'row',
-    marginTop: 4,
-  },
+waiterContent: {
+  flex: 1,
+  flexDirection: 'column',   // ← artık dikey
+  marginTop: 4,
+},
 
-  categoryColumn: {
-    width: 110,
-    marginRight: 8,
-  },
+// categoryColumn artık kullanılmıyor, istersen silebilirsin
+// categoryRow: yeni stil
+categoryRow: {
+  flexDirection: 'row',
+  flexWrap: 'wrap',
+  marginBottom: 8,
+ 
+},
 
-  categoryButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    marginBottom: 4,
-    borderRadius: 8,
-    backgroundColor: '#f2f2f2',
-  },
+categoryButton: {
+  paddingVertical: 18,
+  paddingHorizontal: 14,
+  marginBottom: 14,
+  marginRight:15,
+  borderRadius: 12,
+  backgroundColor: '#f7f7f7',
+  shadowColor: '#000',
+  shadowOpacity: 0.06,
+  shadowRadius: 3,
+  shadowOffset: { width: 0, height: 1 },
+},
+
+
 
   categoryButtonSelected: {
     backgroundColor: '#27ae60',
@@ -2748,6 +2565,17 @@ cashierOrderText: {
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+
+  tableSelectorHeader: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+},
+
+tableSelectorToggle: {
+  fontSize: 16,
+  color: '#666',
+},
 
 
 });
