@@ -168,7 +168,9 @@ export default function App() {
   
 
     const [orders, setOrders] = useState([]);// BU KALACAK orders, setOrders 
-  const [selectedTable, setSelectedTable] = useState(null);
+    const [selectedTable, setSelectedTable] = useState(null);
+    const APP_LOGO = require('./assets/kebelioglu-logo2.png');
+
 
   // 👇 Server’a da push eden wrapper
   function updateOrders(updater) {
@@ -242,22 +244,31 @@ const [drinkCounts, setDrinkCounts] = useState({
   const [noteText, setNoteText] = useState('');
 
     // Uygulama açılınca server’dan orders çek + 2 saniyede bir yenile
+  // Uygulama açılınca server’dan orders çek + 2 saniyede bir yenile
   React.useEffect(() => {
     let isMounted = true;
 
-    async function loadInitial() {
-      const serverOrders = await fetchOrdersFromServer();
-      if (isMounted) {
-        setOrders(serverOrders);
+    const loadFromServer = async () => {
+      try {
+        const serverOrders = await fetchOrdersFromServer();
+        if (isMounted) {
+          setOrders(serverOrders);
+        }
+      } catch (err) {
+        console.log('Initial / polling load error:', err);
       }
-    }
+    };
 
-    // Uygulama ilk açıldığında 1 kere server'dan çek
-    loadInitial();
+    // 🔹 1) Uygulama ilk açıldığında hemen çek
+    loadFromServer();
 
-    // 🔥 Otomatik 2 saniyelik polling YOK
+    // 🔹 2) 2 saniyede bir tekrar çek (multi-device sync için)
+    const intervalId = setInterval(loadFromServer, 2000);
+
+    // 🔹 3) Cleanup
     return () => {
       isMounted = false;
+      clearInterval(intervalId);
     };
   }, []);
 
@@ -1289,6 +1300,13 @@ const tablesForCashier = Object.entries(
 
   return (
     <View style={styles.appContainer}>
+
+  {/* LOGO */}
+   <View style={{ width: '100%', marginHorizontal: -16 }}>
+   <Image source={APP_LOGO} style={styles.logoImage} />
+</View>
+
+
       {/* Mode switcher */}
 <View style={styles.modeSwitchContainer}>
   <Button
@@ -3922,6 +3940,22 @@ cartModalRemoveButtonText: {
   color: '#fff',
   fontWeight: '700',
 },
+logoContainer: {
+  width: '100%',
+  paddingHorizontal: 0,
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginBottom: 8,
+  marginTop: 8,
+},
+
+logoImage: {
+  width: '100%',
+  height: undefined,
+  aspectRatio: 750 / 250,
+  resizeMode: 'contain',
+},
+
 
 
 });
