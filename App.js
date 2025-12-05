@@ -10,6 +10,8 @@ import {
   Image,
   Modal,
   ScrollView,
+  Platform,
+  Alert,
 } from 'react-native';
 import GoalItem from './components/GoalItem';
 
@@ -36,11 +38,21 @@ const MENU_ITEMS = [
   { id: 'tiramisu', name: 'Tiramisu', price: 150, category: 'DESSERT' },
   { id: 'trilece', name: 'Trileçe', price: 150, category: 'DESSERT' },
 
-  // DRINK
-  { id: 'coke', name: 'Coca Cola', price: 70, category: 'DRINK' },
-  { id: 'fanta', name: 'Fanta', price: 70, category: 'DRINK' },
-  { id: 'ayran', name: 'Ayran', price: 50, category: 'DRINK' },
+  // DRINK - SOĞUK
+{ id: 'coke', name: 'Coca Cola', price: 70, category: 'DRINK', isHot: false },
+{ id: 'fanta', name: 'Fanta', price: 70, category: 'DRINK', isHot: false },
+{ id: 'ayran', name: 'Ayran', price: 50, category: 'DRINK', isHot: false },
+
+// DRINK - SICAK
+{ id: 'turk-kahvesi', name: 'Türk Kahvesi', price: 120, category: 'DRINK', isHot: true },
+{ id: 'cappuccino', name: 'Cappuccino', price: 140, category: 'DRINK', isHot: true },
+{ id: 'latte', name: 'Latte', price: 140, category: 'DRINK', isHot: true },
+{ id: 'filter-coffee', name: 'Filtre Kahve', price: 130, category: 'DRINK', isHot: true },
+{ id: 'nescafe', name: 'Nescafe', price: 110, category: 'DRINK', isHot: true },
+{ id: 'cay', name: 'Çay', price: 30, category: 'DRINK', isHot: true },
 ];
+
+
 
   
 
@@ -59,6 +71,7 @@ const CATEGORIES = [
   { id: 'TOAST', label: 'Tostlar' },
   { id: 'DESSERT', label: 'Tatlı & Kahve' },
   { id: 'DRINK', label: 'Soğuk İçecekler' }, // 🆕
+   { id: 'HOT_DRINK', label: 'Sıcak İçecekler' },  // 👈 yeni
 ];
 
 
@@ -83,6 +96,15 @@ const PRODUCT_IMAGES = {
   coke: require('./assets/drink-coke.jpg'),
   fanta: require('./assets/drink-fanta.jpg'),
   ayran: require('./assets/drink-ayran.jpg'),
+
+  // Sıcak içecekler
+    'turk-kahvesi': require('./assets/cheesecake.jpg'),
+  cappuccino: require('./assets/tiramisu.jpg'),
+  latte: require('./assets/waffle.jpg'),
+  'filter-coffee': require('./assets/tiramisu.jpg'),
+  nescafe: require('./assets/waffle.jpg'),
+  cay: require('./assets/drink-ayran.jpg'),
+
 };
 
 
@@ -165,10 +187,17 @@ export default function App() {
   const [selectedCashierItems, setSelectedCashierItems] = useState([]);
   const [selectedWaiterItems, setSelectedWaiterItems] = useState([]);
   const [selectedKitchenItems, setSelectedKitchenItems] = useState([]);
+  const [selectedBaristaItems, setSelectedBaristaItems] = useState([]); // 👈 YENİ
   const [expandedTables, setExpandedTables] = useState({});
 
 const [tablesExpanded, setTablesExpanded] = useState(true);
 
+const [turkKahvesiSugar, setTurkKahvesiSugar] = useState('medium'); 
+// 'no' | 'medium' | 'sweet'
+
+const [milkOptions, setMilkOptions] = useState({
+  sutlu: false,
+});
 
   
   const [basket, setBasket] = useState([]); // current order being built
@@ -242,33 +271,75 @@ const filteredMenuItems = MENU_ITEMS.filter((item) => {
   if (selectedCategory === 'DESSERT') {
     return item.category === 'DESSERT';
   }
-  if (selectedCategory === 'DRINK') {
-    return item.category === 'DRINK';
+    if (selectedCategory === 'DRINK') {
+    // Soğuk içecekler
+    return item.category === 'DRINK' && !item.isHot;
+  }
+  if (selectedCategory === 'HOT_DRINK') {
+    // Sıcak içecekler
+    return item.category === 'DRINK' && item.isHot;
   }
   return true;
 });
 
 
   // ---------- BASKET & ORDER LOGIC ----------
-  function addItemToBasket(item) {
-    const qtyToAdd = item.quantity ?? 1;
+function addItemToBasket(item) {
+  const qtyToAdd = item.quantity ?? 1;
 
-    setBasket((current) => {
-      const existing = current.find((i) => i.id === item.id);
-      if (existing) {
-        return current.map((i) =>
-          i.id === item.id
-            ? { ...i, quantity: i.quantity + qtyToAdd }
-            : i
-        );
-      }
-      return [...current, { ...item, quantity: qtyToAdd }];
+  setBasket((current) => {
+    // Bu ürünün config'ine göre bir "imza" çıkarıyoruz
+    const signature = JSON.stringify({
+      id: item.id,
+      onionYes: item.onionYes ?? 0,
+      onionNo: item.onionNo ?? 0,
+      sauces: item.sauces ?? {},
+      turkKahvesiSugar: item.turkKahvesiSugar ?? null,
+      milkOptions: item.milkOptions ?? {},
+      note: item.note ?? '',
     });
-  }
+
+    // Aynı config'e sahip bir satır var mı?
+    const existingIndex = current.findIndex((i) => i._sig === signature);
+
+    if (existingIndex !== -1) {
+      // Aynı ayarlara sahip satır varsa: sadece miktarını artır
+      const updated = [...current];
+      updated[existingIndex] = {
+        ...updated[existingIndex],
+        quantity: (updated[existingIndex].quantity || 0) + qtyToAdd,
+      };
+      return updated;
+    }
+
+    // Yoksa: yeni satır olarak ekle
+    return [
+      ...current,
+      {
+        ...item,
+        quantity: qtyToAdd,
+        _sig: signature, // içte kullanacağımız gizli alan
+      },
+    ];
+  });
+}
+
 
   function clearBasket() {
     setBasket([]);
   }
+
+  function showNote(note) {
+  if (!note) return;
+
+  if (Platform.OS === 'web') {
+    // Web'de direkt browser alert kullan
+    window.alert(`Ürün Notu:\n${note}`);
+  } else {
+    Alert.alert('Ürün Notu', note);
+  }
+}
+
 
 function submitOrder() {
   if (!selectedTable) {
@@ -295,10 +366,13 @@ const selectedItems = basket.map((item) => ({
     mayonez: false,
     aci: false,
   },
+  turkKahvesiSugar: item.turkKahvesiSugar ?? null,
+  milkOptions: item.milkOptions ?? { sutlu: false },
   note: item.note ?? '',
-  paidCount: item.paidCount || 0,   // ödeme adedi
-  servedCount: item.servedCount || 0, // 🆕 servis adedi
+  paidCount: item.paidCount || 0,
+  servedCount: item.servedCount || 0,
 }));
+
 
 
 
@@ -334,10 +408,18 @@ const selectedItems = basket.map((item) => ({
 
   // Status helper’ları
 function getKitchenStatusForUnit(unit) {
-  // İçeceklerde mutfak durumu yok
+  // Sıcak içecekler: barista mutfağı gibi çalışsın
+  if (unit.isHotDrink) {
+    return unit.isReady ? 'READY' : 'PENDING';
+  }
+
+  // Soğuk içeceklerde mutfak durumu yok
   if (unit.isDrink) return '—';
+
+  // Yemekler
   return unit.isReady ? 'READY' : 'PENDING';
 }
+
 
 function getServedStatusForUnit(unit) {
   return unit.isServed ? 'SERVED' : 'NOT SERVED';
@@ -359,8 +441,6 @@ function buildUnitsForTable(tableKey, tableOrders) {
   }
 
   tableOrders.forEach((order) => {
-    // 👉 Backend'ten gelen eski/simple kayıtlar items içermiyor
-    // Bunları atlıyoruz ki app çakılmasın
     if (!order || !Array.isArray(order.items)) {
       return;
     }
@@ -371,22 +451,36 @@ function buildUnitsForTable(tableKey, tableOrders) {
       const servedCount = it.servedCount || 0;
       const paidCount = it.paidCount || 0;
 
+      const onionYes = it.onionYes || 0;
+      const onionNo = it.onionNo || 0;
+
+      // 🧾 Menü tanımı (sıcak/soğuk bilgisi buradan)
       const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
       const isDrink = menuDef?.category === 'DRINK';
+      const isHotDrink = !!(isDrink && menuDef?.isHot);
 
       for (let unitIndex = 0; unitIndex < qty; unitIndex++) {
         const unitKey = `${order.id}|${itemIndex}|${unitIndex}|${tableKey}`;
+
+        // İlk onionNo adet ürünü soğansız işaretliyoruz
+        const isNoOnion = unitIndex < onionNo;
 
         units.push({
           unitKey,
           orderId: order.id,
           itemIndex,
           unitIndex,
+          id: it.id,                 // 🔴 item id’si de gelsin
           name: it.name,
           price: it.price,
           note: it.note,
           isDrink,
-          isReady: !isDrink && unitIndex < readyCount,
+          isHotDrink,               // 🔥 barista için önemli
+          isNoOnion,                // 🧅 mutfak için
+          turkKahvesiSugar: it.turkKahvesiSugar ?? null,        // ☕ şeker bilgisi
+          milkOptions: it.milkOptions ?? { sutlu: false },      // 🥛 süt bilgisi
+         // ⬇️ Artık sıcak içecekler de ready olabiliyor
+  isReady: (!isDrink || isHotDrink) && unitIndex < readyCount,
           isServed: unitIndex < servedCount,
           isPaid: unitIndex < paidCount,
         });
@@ -418,10 +512,17 @@ function buildUnitsForTable(tableKey, tableOrders) {
 }
 
 function handleProductPress(item) {
-  console.log('handleProductPress ->', item.id);
+  const hotDrinkIds = ['turk-kahvesi', 'cappuccino', 'latte', 'filter-coffee', 'nescafe'];
 
-  const needsCustomization = ['kofte-ekmek', 'hamburger', 'patso', 'karisik-tost', 'waffle']
-    .includes(item.id);
+  const needsCustomization = [
+    'kofte-ekmek',
+    'hamburger',
+    'patso',
+    'karisik-tost',
+    'waffle',
+    ...hotDrinkIds,  // ☕ sıcak içecekler de custom
+  ].includes(item.id);
+
   const needsOnion = item.id === 'kofte-ekmek';
 
   if (needsCustomization || needsOnion) {
@@ -438,11 +539,27 @@ function handleProductPress(item) {
 
     setSauces({ ketcap: false, mayonez: false, aci: false });
     setNoteText('');
+
+    // ☕ Türk kahvesi şeker default: orta
+    if (item.id === 'turk-kahvesi') {
+      setTurkKahvesiSugar('medium');
+    } else {
+      setTurkKahvesiSugar('medium');
+    }
+
+    // 🥛 Kahveler için süt default: kapalı
+    if (hotDrinkIds.includes(item.id)) {
+      setMilkOptions({ sutlu: false });
+    } else {
+      setMilkOptions({ sutlu: false });
+    }
+
     setCustomModalVisible(true);
   } else {
     addItemToBasket(item);
   }
 }
+
 
 
 function toggleKitchenItemSelection(unitKey) {
@@ -453,27 +570,31 @@ function toggleKitchenItemSelection(unitKey) {
   );
 }
 
-
-
 function getBasketCountById(id) {
-  const found = basket.find((i) => i.id === id);
-  return found ? found.quantity : 0;
+  return basket
+    .filter((i) => i.id === id)
+    .reduce((sum, i) => sum + (i.quantity || 0), 0);
 }
+
 
 function decrementItemInBasketById(id) {
   setBasket((current) => {
-    const existing = current.find((i) => i.id === id);
-    if (!existing) return current;
+    const index = current.findIndex((i) => i.id === id);
+    if (index === -1) return current;
 
-    if (existing.quantity <= 1) {
-      // son 1 taneyse tamamen çıkar
-      return current.filter((i) => i.id !== id);
+    const item = current[index];
+
+    if ((item.quantity || 0) <= 1) {
+      // Bu satır bitiyorsa tamamen kaldır
+      return current.filter((_, i) => i !== index);
     }
 
-    // 1 azalt
-    return current.map((i) =>
-      i.id === id ? { ...i, quantity: i.quantity - 1 } : i
-    );
+    const updated = [...current];
+    updated[index] = {
+      ...item,
+      quantity: item.quantity - 1,
+    };
+    return updated;
   });
 }
 
@@ -538,8 +659,6 @@ function readySelectedItemsForTable(tableKey) {
 }
 
 
-
-
   function handleCustomizationComplete() {
     if (!customProduct) return;
 
@@ -561,7 +680,10 @@ addItemToBasket({
   onionNo,
   sauces,
   note: noteText,
+  turkKahvesiSugar: customProduct.id === 'turk-kahvesi' ? turkKahvesiSugar : null,
+  milkOptions,
 });
+
 
 
     setCustomModalVisible(false);
@@ -591,28 +713,7 @@ addItemToBasket({
     }
   }
 
-  
-
-
-
-  function formatOrderText(order) {
-  if (!order.items || order.items.length === 0) {
-    return 'Empty order';
-  }
-
-    // ---- TABLE → ORDERS grupla ----
-  const tablesForCashier = Object.entries(
-    orders.reduce((acc, order) => {
-      const key = String(order.tableId);
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(order);
-      return acc;
-    }, {})
-  );
-
-
-
-  // ---- SEÇİM TOGGLE FONKSİYONLARI ----
+    // ---- SEÇİM TOGGLE FONKSİYONLARI ----
   function toggleCashierItemSelection(unitKey) {
     setSelectedCashierItems((prev) =>
       prev.includes(unitKey)
@@ -620,6 +721,15 @@ addItemToBasket({
         : [...prev, unitKey]
     );
   }
+
+  function toggleBaristaItemSelection(unitKey) {
+  setSelectedBaristaItems((prev) =>
+    prev.includes(unitKey)
+      ? prev.filter((k) => k !== unitKey)
+      : [...prev, unitKey]
+  );
+}
+
 
   function toggleWaiterItemSelection(unitKey) {
     setSelectedWaiterItems((prev) =>
@@ -629,13 +739,6 @@ addItemToBasket({
     );
   }
 
-  function toggleKitchenItemSelection(unitKey) {
-    setSelectedKitchenItems((prev) =>
-      prev.includes(unitKey)
-        ? prev.filter((k) => k !== unitKey)
-        : [...prev, unitKey]
-    );
-  }
 
   // ---- ACTIONS: KITCHEN → READY ----
   function readySelectedItemsForTable(tableKey) {
@@ -697,6 +800,63 @@ addItemToBasket({
       prev.filter((k) => !k.endsWith(`|${tableKey}`))
     );
   }
+
+  function baristaReadySelectedItemsForTable(tableKey) {
+  updateOrders((currentOrders) => {
+    // Bu masaya ait seçili unitKey'ler
+    const selectedForTable = selectedBaristaItems.filter((k) =>
+      k.endsWith(`|${tableKey}`)
+    );
+    if (selectedForTable.length === 0) return currentOrders;
+
+    const updated = currentOrders.map((order) => {
+      const orderSelected = selectedForTable.filter((k) =>
+        k.startsWith(order.id + '|')
+      );
+      if (orderSelected.length === 0) return order;
+
+      const newItems = order.items.map((it, itemIndex) => {
+        const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
+        const isDrink = menuDef?.category === 'DRINK';
+        const isHotDrink = !!(isDrink && menuDef?.isHot);
+
+        // ❄️ Soğuk içecek veya yemek değil → barista değiştirmez
+        if (!isHotDrink) return it;
+
+        // Bu itemIndex’e ait seçili unitKey’ler
+        const itemKeys = orderSelected.filter((k) => {
+          const parts = k.split('|');
+          return parts[1] === String(itemIndex);
+        });
+
+        if (itemKeys.length === 0) return it;
+
+        const qty = it.quantity || 0;
+        const currentReady = it.readyCount || 0;
+        const add = itemKeys.length;
+        const newReady = Math.min(qty, currentReady + add);
+
+        return {
+          ...it,
+          readyCount: newReady, // sadece readyCount
+        };
+      });
+
+      return {
+        ...order,
+        items: newItems,
+      };
+    });
+
+    return updated;
+  });
+
+  // Bu masaya ait seçili barista item'larını temizle
+  setSelectedBaristaItems((prev) =>
+    prev.filter((k) => !k.endsWith(`|${tableKey}`))
+  );
+}
+
 
   // ---- ACTIONS: WAITER → SERVED ----
   function serveSelectedItemsForTable(tableKey) {
@@ -792,11 +952,30 @@ addItemToBasket({
     );
   }
 
-  // ---- STATUS HELPERS (CASHIER/WAITER için ortak kullanabiliriz) ----
-  function getKitchenStatusForUnit(unit) {
-    if (unit.isDrink) return '—'; // içecekte asla PENDING/READY yok
-    return unit.isReady ? 'READY' : 'PENDING';
+
+
+
+  function formatOrderText(order) {
+  if (!order.items || order.items.length === 0) {
+    return 'Empty order';
   }
+
+    // ---- TABLE → ORDERS grupla ----
+  const tablesForCashier = Object.entries(
+    orders.reduce((acc, order) => {
+      const key = String(order.tableId);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(order);
+      return acc;
+    }, {})
+  );
+
+
+
+
+
+  // ---- STATUS HELPERS (CASHIER/WAITER için ortak kullanabiliriz) ----
+
 
   function getServedStatusForUnit(unit) {
     return unit.isServed ? 'SERVED' : 'NOT SERVED';
@@ -1008,6 +1187,11 @@ const tablesForCashier = Object.entries(
     color={mode === 'WAITER' ? '#0acc2aff' : '#888'}
     onPress={() => setMode('WAITER')}
   />
+   <Button
+    title="Barista"
+    color={mode === 'BARISTA' ? '#0acc2aff' : '#888'}
+    onPress={() => setMode('BARISTA')}
+  />
   <Button
     title="Kitchen"
     color={mode === 'KITCHEN' ? '#0acc2aff' : '#888'}
@@ -1099,7 +1283,7 @@ const tablesForCashier = Object.entries(
           contentContainerStyle={styles.menuList}
           renderItem={({ item }) => {
             const countInBasket = getBasketCountById(item.id);
-            const isDrink = item.category === 'DRINK';
+            const isDrink = item.category === 'DRINK' && !item.isHot; 
 
             return (
               <View style={styles.productCardWrapper}>
@@ -1320,6 +1504,75 @@ const tablesForCashier = Object.entries(
                 </View>
               </>
             )}
+            {/* TÜRK KAHVESİ ŞEKER SEÇİMİ */}
+{customProduct.id === 'turk-kahvesi' && (
+  <>
+    <Text style={styles.optionTitle}>Şeker Tercihi</Text>
+    <View style={styles.sugarRow}>
+      <Pressable
+        style={[
+          styles.sugarOption,
+          turkKahvesiSugar === 'no' && styles.sugarOptionActive,
+        ]}
+        onPress={() => setTurkKahvesiSugar('no')}
+      >
+        <Text style={styles.sugarOptionText}>Şekersiz</Text>
+      </Pressable>
+
+      <Pressable
+        style={[
+          styles.sugarOption,
+          turkKahvesiSugar === 'medium' && styles.sugarOptionActive,
+        ]}
+        onPress={() => setTurkKahvesiSugar('medium')}
+      >
+        <Text style={styles.sugarOptionText}>Orta</Text>
+      </Pressable>
+
+      <Pressable
+        style={[
+          styles.sugarOption,
+          turkKahvesiSugar === 'sweet' && styles.sugarOptionActive,
+        ]}
+        onPress={() => setTurkKahvesiSugar('sweet')}
+      >
+        <Text style={styles.sugarOptionText}>Şekerli</Text>
+      </Pressable>
+    </View>
+  </>
+)}
+
+{/* KAHVELER İÇİN SÜT */}
+{['cappuccino', 'latte', 'filter-coffee', 'nescafe'].includes(customProduct.id) && (
+  <>
+    <Text style={styles.optionTitle}>Süt Tercihi</Text>
+    <View style={styles.sauceRowContainer}>
+      <Pressable
+        style={[
+          styles.sauceItem,
+          milkOptions.sutlu && styles.sauceItemActive,
+        ]}
+        onPress={() =>
+          setMilkOptions((prev) => ({ ...prev, sutlu: !prev.sutlu }))
+        }
+      >
+        <Text style={styles.sauceLabel}>Sütlü olsun</Text>
+        <View
+          style={[
+            styles.checkbox,
+            milkOptions.sutlu && styles.checkboxActive,
+          ]}
+        >
+          {milkOptions.sutlu && (
+            <Text style={styles.checkboxCheck}>✓</Text>
+          )}
+        </View>
+      </Pressable>
+    </View>
+  </>
+)}
+
+
 
             {/* NOTE */}
             <Text style={styles.optionTitle}>Ek Not</Text>
@@ -1511,85 +1764,105 @@ const tablesForCashier = Object.entries(
                       </View>
 
                       {/* PENDING (unready) items */}
-                      {unreadyUnits.map((unit) => {
-                        const isSelected =
-                          selectedKitchenItems.includes(
-                            unit.unitKey
-                          );
+                  
+{unreadyUnits.map((unit) => {
+  const isSelected = selectedKitchenItems.includes(unit.unitKey);
 
-                        const kitchenStatus = unit.isReady
-                          ? 'READY'
-                          : 'PENDING';
-                        const servedStatus =
-                          getServedStatusForUnit(unit);
-                        const paidStatus =
-                          getPaidStatusForUnit(unit);
+  const kitchenStatus = unit.isReady ? 'READY' : 'PENDING';
+  const servedStatus = getServedStatusForUnit(unit);
+  const paidStatus = getPaidStatusForUnit(unit);
 
-                        return (
-                          <Pressable
-                            key={unit.unitKey}
-                            style={[
-                              styles.cashierOrderRow,
-                              styles.cashierOrderRowUnpaid,
-                              isSelected &&
-                                styles.cashierOrderRowSelected,
-                            ]}
-                            onPress={() =>
-                              toggleKitchenItemSelection(
-                                unit.unitKey
-                              )
-                            }
-                          >
-                            <Text style={styles.cashierOrderText}>
-                              {unit.name} - TL{' '}
-                              {unit.price.toFixed(2)} [
-                              {kitchenStatus} | {servedStatus} |{' '}
-                              {paidStatus}]
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
+  return (
+    <Pressable
+      key={unit.unitKey}
+      style={[
+        styles.cashierOrderRow,
+        styles.cashierOrderRowUnpaid,
+        isSelected && styles.cashierOrderRowSelected,
+      ]}
+      onPress={() => toggleKitchenItemSelection(unit.unitKey)}
+    >
+      <View style={styles.kitchenRowInner}>
+        <Text style={styles.cashierOrderText}>
+          {unit.name} {unit.isNoOnion ? ' (Soğansız)' : ''} [
+          {kitchenStatus} | {servedStatus} | {paidStatus}]
+        </Text>
+
+        {/* 👇 SADECE NOTU VARSA BUTON GÖSTER */}
+        {unit.note ? (
+          <Pressable
+            style={styles.kitchenNoteButton}
+             onPress={(e) => {
+      // Dıştaki Pressable'ın onPress'ini tetikleme
+      e.stopPropagation?.();
+      showNote(unit.note);
+    }}
+          >
+            <Text style={styles.kitchenNoteButtonText}>
+              Notu Gör
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+})}
+
+
 
                       {/* READY items */}
-                      {readyUnits.length > 0 && (
-                        <View style={{ marginTop: 6 }}>
-                          <Text
-                            style={{
-                              fontSize: 12,
-                              color: '#555',
-                              marginBottom: 2,
-                            }}
-                          >
-                            Ready items:
-                          </Text>
-                          {readyUnits.map((unit) => {
-                            const kitchenStatus = 'READY';
-                            const servedStatus =
-                              getServedStatusForUnit(unit);
-                            const paidStatus =
-                              getPaidStatusForUnit(unit);
+{readyUnits.length > 0 && (
+  <View style={{ marginTop: 6 }}>
+    <Text
+      style={{
+        fontSize: 12,
+        color: '#555',
+        marginBottom: 2,
+      }}
+    >
+      Ready items:
+    </Text>
+    {readyUnits.map((unit) => {
+      const kitchenStatus = 'READY';
+      const servedStatus = getServedStatusForUnit(unit);
+      const paidStatus = getPaidStatusForUnit(unit);
 
-                            return (
-                              <View
-                                key={unit.unitKey}
-                                style={[
-                                  styles.cashierOrderRow,
-                                  styles.cashierOrderRowPaid,
-                                ]}
-                              >
-                                <Text
-                                  style={styles.cashierOrderText}
-                                >
-                                  {unit.name} - TL{' '}
-                                  {unit.price.toFixed(2)} [
-                                  {kitchenStatus} | {servedStatus}{' '}
-                                  | {paidStatus}]
-                                </Text>
-                              </View>
-                            );
-                          })}
-                        </View>
-                      )}
+      return (
+        <View
+          key={unit.unitKey}
+          style={[
+            styles.cashierOrderRow,
+            styles.cashierOrderRowPaid,
+          ]}
+        >
+          <View style={styles.kitchenRowInner}>
+            <Text style={styles.cashierOrderText}>
+              {unit.name} {unit.isNoOnion ? ' (Soğansız)' : ''} [
+              {kitchenStatus} | {servedStatus} | {paidStatus}]
+            </Text>
+
+            {unit.note ? (
+              <Pressable
+                style={styles.kitchenNoteButton}
+                 onPress={(e) => {
+      // Dıştaki Pressable'ın onPress'ini tetikleme
+      e.stopPropagation?.();
+      showNote(unit.note);
+    }}
+              >
+                <Text style={styles.kitchenNoteButtonText}>
+                  Notu Gör
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+      );
+    })}
+  </View>
+)}
+
+
 
                       {/* Mark Ready */}
                       <View style={styles.cashierPayRow}>
@@ -1620,7 +1893,224 @@ const tablesForCashier = Object.entries(
         </View>
       )}
 
+{mode === 'BARISTA' && (
+  <View style={styles.cashierContainer}>
+    <Text style={styles.sectionTitle}>Barista Overview</Text>
 
+    {tablesForCashier.length === 0 && (
+      <Text style={styles.emptyText}>No barista orders yet.</Text>
+    )}
+
+    <FlatList
+      data={tablesForCashier}
+      keyExtractor={([tableKey]) => tableKey}
+      renderItem={({ item }) => {
+        const [tableKey, tableOrders] = item;
+        const allUnits = buildUnitsForTable(tableKey, tableOrders);
+
+        // 🔥 SADECE sıcak içecekler
+        const hotUnits = allUnits.filter((u) => u.isHotDrink);
+
+        if (hotUnits.length === 0) return null;
+
+        const unreadyUnits = hotUnits.filter((u) => !u.isReady);
+        const readyUnits = hotUnits.filter((u) => u.isReady);
+
+        const totalCount = hotUnits.length;
+        const readyCount = readyUnits.length;
+        const pendingCount = unreadyUnits.length;
+
+        const isExpanded = !!expandedTables[tableKey];
+
+        const allUnreadySelected =
+          unreadyUnits.length > 0 &&
+          unreadyUnits.every((u) =>
+            selectedBaristaItems.includes(u.unitKey)
+          );
+
+        const selectedCount = unreadyUnits.filter((u) =>
+          selectedBaristaItems.includes(u.unitKey)
+        ).length;
+
+        const formatBaristaLabel = (unit) => {
+          const extras = [];
+
+          if (unit.turkKahvesiSugar) {
+            if (unit.turkKahvesiSugar === 'no') extras.push('Şekersiz');
+            if (unit.turkKahvesiSugar === 'medium') extras.push('Orta');
+            if (unit.turkKahvesiSugar === 'sweet') extras.push('Şekerli');
+          }
+
+          if (unit.milkOptions && unit.milkOptions.sutlu) {
+            extras.push('Sütlü');
+          }
+
+          if (extras.length === 0) return unit.name;
+          return `${unit.name} (${extras.join(', ')})`;
+        };
+
+        return (
+          <View style={styles.cashierTableCard}>
+            {/* HEADER */}
+            <Pressable
+              onPress={() =>
+                setExpandedTables((prev) => ({
+                  ...prev,
+                  [tableKey]: !prev[tableKey],
+                }))
+              }
+            >
+              <Text style={styles.cashierTableTitle}>
+                Masa {tableKey}
+              </Text>
+              <View style={styles.cashierSummaryRow}>
+                <Text style={styles.cashierSummaryText}>
+                  TOTAL: {totalCount} hot drinks
+                </Text>
+                <Text style={styles.cashierSummaryText}>
+                  READY: {readyCount}
+                </Text>
+                <Text style={styles.cashierSummaryText}>
+                  PENDING: {pendingCount}
+                </Text>
+              </View>
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: '#888',
+                  marginTop: 2,
+                }}
+              >
+                {isExpanded ? '▲ Gizle' : '▼ Detayları Göster'}
+              </Text>
+            </Pressable>
+
+            {isExpanded && (
+              <>
+                {/* Select All / Clear All */}
+                <View style={styles.cashierSelectAllRow}>
+                  <Button
+                    title={allUnreadySelected ? 'Clear All' : 'Select All'}
+                    color="#0984e3"
+                    onPress={() => {
+                      const allKeys = unreadyUnits.map((u) => u.unitKey);
+                      if (allUnreadySelected) {
+                        setSelectedBaristaItems((prev) =>
+                          prev.filter((k) => !allKeys.includes(k))
+                        );
+                      } else {
+                        setSelectedBaristaItems((prev) => [
+                          ...prev,
+                          ...allKeys.filter((k) => !prev.includes(k)),
+                        ]);
+                      }
+                    }}
+                  />
+                </View>
+
+                {/* PENDING hot drinks */}
+                {unreadyUnits.map((unit) => {
+                  const isSelected = selectedBaristaItems.includes(
+                    unit.unitKey
+                  );
+
+                  return (
+                    <Pressable
+                      key={unit.unitKey}
+                      style={[
+                        styles.cashierOrderRow,
+                        styles.cashierOrderRowUnpaid,
+                        isSelected && styles.cashierOrderRowSelected,
+                      ]}
+                      onPress={() => toggleBaristaItemSelection(unit.unitKey)}
+                    >
+                      <View style={styles.kitchenRowInner}>
+                        <Text style={styles.cashierOrderText}>
+                          {formatBaristaLabel(unit)} [PENDING]
+                        </Text>
+
+                        {unit.note ? (
+                          <Pressable
+                            style={styles.kitchenNoteButton}
+                            onPress={(e) => {
+                              e.stopPropagation?.();
+                              showNote(unit.note);
+                            }}
+                          >
+                            <Text style={styles.kitchenNoteButtonText}>
+                              Notu Gör
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+
+                {/* READY hot drinks */}
+                {readyUnits.length > 0 && (
+                  <View style={{ marginTop: 6 }}>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: '#555',
+                        marginBottom: 2,
+                      }}
+                    >
+                      Ready drinks:
+                    </Text>
+                    {readyUnits.map((unit) => (
+                      <View
+                        key={unit.unitKey}
+                        style={[
+                          styles.cashierOrderRow,
+                          styles.cashierOrderRowPaid,
+                        ]}
+                      >
+                        <View style={styles.kitchenRowInner}>
+                          <Text style={styles.cashierOrderText}>
+                            {formatBaristaLabel(unit)} [READY]
+                          </Text>
+
+                          {unit.note ? (
+                            <Pressable
+                              style={styles.kitchenNoteButton}
+                              onPress={(e) => {
+                                e.stopPropagation?.();
+                                showNote(unit.note);
+                              }}
+                            >
+                              <Text style={styles.kitchenNoteButtonText}>
+                                Notu Gör
+                              </Text>
+                            </Pressable>
+                          ) : null}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Mark Ready */}
+                <View style={styles.cashierPayRow}>
+                  <Text style={styles.cashierSummaryText}>
+                    Selected: {selectedCount} drinks
+                  </Text>
+                  <Button
+                    title="Mark Ready"
+                    color={selectedCount > 0 ? '#27ae60' : '#aaa'}
+                    onPress={() => baristaReadySelectedItemsForTable(tableKey)}
+                    disabled={selectedCount === 0}
+                  />
+                </View>
+              </>
+            )}
+          </View>
+        );
+      }}
+    />
+  </View>
+)}
 
       {mode === 'WAITER' && (
         <View style={styles.cashierContainer}>
@@ -1661,6 +2151,29 @@ const tablesForCashier = Object.entries(
               const selectedCount = unservedUnits.filter((u) =>
                 selectedWaiterItems.includes(u.unitKey)
               ).length;
+  const formatWaiterLabel = (unit) => {
+    const extras = [];
+
+    // Soğansız yemekler
+    if (unit.isNoOnion) {
+      extras.push('Soğansız');
+    }
+
+    // Türk kahvesi şeker bilgisi
+    if (unit.turkKahvesiSugar) {
+      if (unit.turkKahvesiSugar === 'no') extras.push('Şekersiz');
+      if (unit.turkKahvesiSugar === 'medium') extras.push('Orta');
+      if (unit.turkKahvesiSugar === 'sweet') extras.push('Şekerli');
+    }
+
+    // Sütlü kahveler
+    if (unit.milkOptions && unit.milkOptions.sutlu) {
+      extras.push('Sütlü');
+    }
+
+    if (extras.length === 0) return unit.name;
+    return `${unit.name} (${extras.join(', ')})`;
+  };
 
               return (
                 <View style={styles.cashierTableCard}>
@@ -1734,85 +2247,67 @@ const tablesForCashier = Object.entries(
                       </View>
 
                       {/* UNSERVED items */}
-                      {unservedUnits.map((unit) => {
-                        const isSelected =
-                          selectedWaiterItems.includes(
-                            unit.unitKey
-                          );
+                 {unservedUnits.map((unit) => {
+  const isSelected = selectedWaiterItems.includes(unit.unitKey);
 
-                        const kitchenStatus =
-                          getKitchenStatusForUnit(unit);
-                        const servedStatus =
-                          getServedStatusForUnit(unit);
-                        const paidStatus =
-                          getPaidStatusForUnit(unit);
+  const kitchenStatus = getKitchenStatusForUnit(unit);
+  const servedStatus = getServedStatusForUnit(unit);
+  const paidStatus = getPaidStatusForUnit(unit);
 
-                        return (
-                          <Pressable
-                            key={unit.unitKey}
-                            style={[
-                              styles.cashierOrderRow,
-                              styles.cashierOrderRowUnpaid,
-                              isSelected &&
-                                styles.cashierOrderRowSelected,
-                            ]}
-                            onPress={() =>
-                              toggleWaiterItemSelection(
-                                unit.unitKey
-                              )
-                            }
-                          >
-                            <Text style={styles.cashierOrderText}>
-                              {unit.name} - TL{' '}
-                              {unit.price.toFixed(2)} [
-                              {kitchenStatus} | {servedStatus} |{' '}
-                              {paidStatus}]
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
+  return (
+    <Pressable
+      key={unit.unitKey}
+      style={[
+        styles.cashierOrderRow,
+        styles.cashierOrderRowUnpaid,
+        isSelected && styles.cashierOrderRowSelected,
+      ]}
+      onPress={() => toggleWaiterItemSelection(unit.unitKey)}
+    >
+      <Text style={styles.cashierOrderText}>
+        {formatWaiterLabel(unit)} [
+        {kitchenStatus} | {servedStatus} | {paidStatus}]
+      </Text>
+    </Pressable>
+  );
+})}
+
 
                       {/* SERVED items */}
-                      {servedUnits.length > 0 && (
-                        <View style={{ marginTop: 6 }}>
-                          <Text
-                            style={{
-                              fontSize: 12,
-                              color: '#555',
-                              marginBottom: 2,
-                            }}
-                          >
-                            Served items:
-                          </Text>
-                          {servedUnits.map((unit) => {
-                            const kitchenStatus =
-                              getKitchenStatusForUnit(unit);
-                            const servedStatus =
-                              getServedStatusForUnit(unit);
-                            const paidStatus =
-                              getPaidStatusForUnit(unit);
+               {servedUnits.length > 0 && (
+  <View style={{ marginTop: 6 }}>
+    <Text
+      style={{
+        fontSize: 12,
+        color: '#555',
+        marginBottom: 2,
+      }}
+    >
+      Served items:
+    </Text>
+    {servedUnits.map((unit) => {
+      const kitchenStatus = getKitchenStatusForUnit(unit);
+      const servedStatus = getServedStatusForUnit(unit);
+      const paidStatus = getPaidStatusForUnit(unit);
 
-                            return (
-                              <View
-                                key={unit.unitKey}
-                                style={[
-                                  styles.cashierOrderRow,
-                                  styles.cashierOrderRowPaid,
-                                ]}
-                              >
-                                <Text
-                                  style={styles.cashierOrderText}
-                                >
-                                  {unit.name} - TL{' '}
-                                  {unit.price.toFixed(2)} [
-                                  {kitchenStatus} | {servedStatus}{' '}
-                                  | {paidStatus}]
-                                </Text>
-                              </View>
-                            );
-                          })}
-                        </View>
-                      )}
+      return (
+        <View
+          key={unit.unitKey}
+          style={[
+            styles.cashierOrderRow,
+            styles.cashierOrderRowPaid,
+          ]}
+        >
+          <Text style={styles.cashierOrderText}>
+            {formatWaiterLabel(unit)} [
+            {kitchenStatus} | {servedStatus} | {paidStatus}]
+          </Text>
+        </View>
+      );
+    })}
+  </View>
+)}
+
 
                       {/* Serve button */}
                       <View style={styles.cashierPayRow}>
@@ -2876,6 +3371,78 @@ modalConfirmButton: {
 modalButtonText: {
   color: '#fff',
   fontWeight: '700',
+},
+kitchenRowInner: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+},
+
+kitchenNoteButton: {
+  paddingHorizontal: 8,
+  paddingVertical: 4,
+  borderRadius: 6,
+  borderWidth: 1,
+  borderColor: '#555',
+  backgroundColor: '#fff',
+},
+
+kitchenNoteButtonText: {
+  fontSize: 11,
+  fontWeight: '600',
+  color: '#333',
+},
+
+kitchenRowInner: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+},
+
+kitchenNoteButton: {
+  paddingHorizontal: 8,
+  paddingVertical: 4,
+  borderRadius: 6,
+  borderWidth: 1,
+  borderColor: '#555',
+  backgroundColor: '#ffffff',
+},
+
+kitchenNoteButtonText: {
+  fontSize: 11,
+  fontWeight: '600',
+  color: '#333',
+},
+
+sugarRow: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  marginTop: 6,
+  marginBottom: 8,
+  gap: 6,
+},
+
+sugarOption: {
+  flex: 1,
+  paddingVertical: 8,
+  borderRadius: 10,
+  borderWidth: 1,
+  borderColor: '#ccc',
+  backgroundColor: '#f7f7f7',
+  alignItems: 'center',
+},
+
+sugarOptionActive: {
+  borderColor: '#27ae60',
+  backgroundColor: '#d6f5dd',
+},
+
+sugarOptionText: {
+  fontSize: 12,
+  fontWeight: '600',
+  color: '#333',
 },
 
 
