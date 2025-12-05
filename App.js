@@ -44,12 +44,13 @@ const MENU_ITEMS = [
 { id: 'ayran', name: 'Ayran', price: 50, category: 'DRINK', isHot: false },
 
 // DRINK - SICAK
-{ id: 'turk-kahvesi', name: 'Türk Kahvesi', price: 120, category: 'DRINK', isHot: true },
-{ id: 'cappuccino', name: 'Cappuccino', price: 140, category: 'DRINK', isHot: true },
-{ id: 'latte', name: 'Latte', price: 140, category: 'DRINK', isHot: true },
-{ id: 'filter-coffee', name: 'Filtre Kahve', price: 130, category: 'DRINK', isHot: true },
-{ id: 'nescafe', name: 'Nescafe', price: 110, category: 'DRINK', isHot: true },
-{ id: 'cay', name: 'Çay', price: 30, category: 'DRINK', isHot: true },
+{ id: 'turk-kahvesi', name: 'Türk Kahvesi', price: 100, category: 'DRINK', isHot: true },
+{ id: 'cappuccino', name: 'Cappuccino', price: 150, category: 'DRINK', isHot: true },
+{ id: 'latte', name: 'Latte', price: 150, category: 'DRINK', isHot: true },
+{ id: 'filter-coffee', name: 'Filtre Kahve', price: 150, category: 'DRINK', isHot: true },
+{ id: 'nescafe', name: 'Nescafe', price: 100, category: 'DRINK', isHot: true },
+{ id: 'cay', name: 'Çay', price: 50, category: 'DRINK', isHot: true },
+{ id: 'espresso', name: 'Espresso', price: 150, category: 'DRINK', isHot: true },
 ];
 
 
@@ -98,13 +99,13 @@ const PRODUCT_IMAGES = {
   ayran: require('./assets/drink-ayran.jpg'),
 
   // Sıcak içecekler
-    'turk-kahvesi': require('./assets/cheesecake.jpg'),
-  cappuccino: require('./assets/tiramisu.jpg'),
-  latte: require('./assets/waffle.jpg'),
-  'filter-coffee': require('./assets/tiramisu.jpg'),
-  nescafe: require('./assets/waffle.jpg'),
-  cay: require('./assets/drink-ayran.jpg'),
-
+    'turk-kahvesi': require('./assets/turkish-coffee.jpg'),
+  cappuccino: require('./assets/cappuccino.jpg'),
+  latte: require('./assets/latte.jpg'),
+  'filter-coffee': require('./assets/filitre-kahve.jpg'),
+  nescafe: require('./assets/nescafe.jpg'),
+  cay: require('./assets/cay.jpg'),
+espresso: require('./assets/espresso.jpg'),
 };
 
 
@@ -190,6 +191,15 @@ export default function App() {
   const [selectedBaristaItems, setSelectedBaristaItems] = useState([]); // 👈 YENİ
   const [expandedTables, setExpandedTables] = useState({});
 
+
+
+  const [cayStrength, setCayStrength] = useState('normal'); 
+// 'acik' | 'normal' | 'demli'
+
+const [espressoShots, setEspressoShots] = useState('single');
+// 'single' | 'double'
+
+
 const [tablesExpanded, setTablesExpanded] = useState(true);
 
 const [turkKahvesiSugar, setTurkKahvesiSugar] = useState('medium'); 
@@ -206,6 +216,7 @@ const [milkOptions, setMilkOptions] = useState({
 
   const [customModalVisible, setCustomModalVisible] = useState(false);
   const [customProduct, setCustomProduct] = useState(null);
+const [cartModalVisible, setCartModalVisible] = useState(false);
 
 
   const [onionYes, setOnionYes] = useState(1);
@@ -241,18 +252,12 @@ const [drinkCounts, setDrinkCounts] = useState({
       }
     }
 
+    // Uygulama ilk açıldığında 1 kere server'dan çek
     loadInitial();
 
-    const interval = setInterval(async () => {
-      const serverOrders = await fetchOrdersFromServer();
-      if (isMounted) {
-        setOrders(serverOrders);
-      }
-    }, 2000); // 2 saniyede bir
-
+    // 🔥 Otomatik 2 saniyelik polling YOK
     return () => {
       isMounted = false;
-      clearInterval(interval);
     };
   }, []);
 
@@ -282,6 +287,68 @@ const filteredMenuItems = MENU_ITEMS.filter((item) => {
   return true;
 });
 
+/// TOGGLE ME
+
+function toggleBaristaItemSelection(unitKey) {
+  setSelectedBaristaItems((prev) =>
+    prev.includes(unitKey)
+      ? prev.filter((k) => k !== unitKey)
+      : [...prev, unitKey]
+  );
+}
+
+function baristaReadySelectedItemsForTable(tableKey) {
+  updateOrders((currentOrders) => {
+    const selectedForTable = selectedBaristaItems.filter((k) =>
+      k.endsWith(`|${tableKey}`)
+    );
+    if (selectedForTable.length === 0) return currentOrders;
+
+    const updated = currentOrders.map((order) => {
+      const orderSelected = selectedForTable.filter((k) =>
+        k.startsWith(order.id + '|')
+      );
+      if (orderSelected.length === 0) return order;
+
+      const newItems = order.items.map((it, itemIndex) => {
+        const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
+        const isDrink = menuDef?.category === 'DRINK';
+        const isHotDrink = !!(isDrink && menuDef?.isHot);
+
+        if (!isHotDrink) return it;
+
+        const itemKeys = orderSelected.filter((k) => {
+          const parts = k.split('|');
+          return parts[1] === String(itemIndex);
+        });
+
+        if (itemKeys.length === 0) return it;
+
+        const qty = it.quantity || 0;
+        const currentReady = it.readyCount || 0;
+        const add = itemKeys.length;
+        const newReady = Math.min(qty, currentReady + add);
+
+        return {
+          ...it,
+          readyCount: newReady,
+        };
+      });
+
+      return {
+        ...order,
+        items: newItems,
+      };
+    });
+
+    return updated;
+  });
+
+  setSelectedBaristaItems((prev) =>
+    prev.filter((k) => !k.endsWith(`|${tableKey}`))
+  );
+}
+
 
   // ---------- BASKET & ORDER LOGIC ----------
 function addItemToBasket(item) {
@@ -297,6 +364,10 @@ function addItemToBasket(item) {
       turkKahvesiSugar: item.turkKahvesiSugar ?? null,
       milkOptions: item.milkOptions ?? {},
       note: item.note ?? '',
+       turkKahvesiSugar: customProduct.id === 'turk-kahvesi' ? turkKahvesiSugar : null,
+  milkOptions,
+  cayStrength: customProduct.id === 'cay' ? cayStrength : null,
+  espressoShots: customProduct.id === 'espresso' ? espressoShots : null,
     });
 
     // Aynı config'e sahip bir satır var mı?
@@ -353,29 +424,27 @@ function submitOrder() {
     return;
   }
 
-const selectedItems = basket.map((item) => ({
-  id: item.id,
-  name: item.name,
-  price: item.price,
-  quantity: item.quantity,
-  onionYes: item.onionYes ?? 0,
-  onionNo: item.onionNo ?? 0,
-  drinks: item.drinks ?? { coke: 0, fanta: 0, ayran: 0 },
-  sauces: item.sauces ?? {
-    ketcap: false,
-    mayonez: false,
-    aci: false,
-  },
-  turkKahvesiSugar: item.turkKahvesiSugar ?? null,
-  milkOptions: item.milkOptions ?? { sutlu: false },
-  note: item.note ?? '',
-  paidCount: item.paidCount || 0,
-  servedCount: item.servedCount || 0,
-}));
-
-
-
-
+  const selectedItems = basket.map((item) => ({
+    id: item.id,
+    name: item.name,
+    price: item.price,
+    quantity: item.quantity,
+    onionYes: item.onionYes ?? 0,
+    onionNo: item.onionNo ?? 0,
+    drinks: item.drinks ?? { coke: 0, fanta: 0, ayran: 0 },
+    sauces: item.sauces ?? {
+      ketcap: false,
+      mayonez: false,
+      aci: false,
+    },
+    turkKahvesiSugar: item.turkKahvesiSugar ?? null,
+    milkOptions: item.milkOptions ?? { sutlu: false },
+    cayStrength: item.cayStrength ?? null,
+    espressoShots: item.espressoShots ?? null,
+    paidCount: item.paidCount || 0,
+    servedCount: item.servedCount || 0,
+    note: item.note ?? '',
+  }));
 
   const orderNote = basket
     .map((item) => item.note)
@@ -394,8 +463,15 @@ const selectedItems = basket.map((item) => ({
     },
   ]);
 
+  // 🧹 sepeti boşalt
   clearBasket();
+
+  // 🧨 cart modal açıksa kapat
+  setCartModalVisible(false);
 }
+
+
+
 
 
   // WAITER: remove order (served)
@@ -435,7 +511,6 @@ function buildUnitsForTable(tableKey, tableOrders) {
 
   const units = [];
 
-  // Güvenlik: tableOrders yoksa veya array değilse, boş dön
   if (!Array.isArray(tableOrders)) {
     return units;
   }
@@ -454,43 +529,55 @@ function buildUnitsForTable(tableKey, tableOrders) {
       const onionYes = it.onionYes || 0;
       const onionNo = it.onionNo || 0;
 
-      // 🧾 Menü tanımı (sıcak/soğuk bilgisi buradan)
       const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
       const isDrink = menuDef?.category === 'DRINK';
       const isHotDrink = !!(isDrink && menuDef?.isHot);
 
+      // 🔍 DEBUG: item içinde ne var görelim
+      console.log('ITEM IN buildUnitsForTable:', it.id, {
+        cayStrength: it.cayStrength,
+        turkKahvesiSugar: it.turkKahvesiSugar,
+        milkOptions: it.milkOptions,
+      });
+
       for (let unitIndex = 0; unitIndex < qty; unitIndex++) {
         const unitKey = `${order.id}|${itemIndex}|${unitIndex}|${tableKey}`;
-
-        // İlk onionNo adet ürünü soğansız işaretliyoruz
         const isNoOnion = unitIndex < onionNo;
 
-        units.push({
+        const unit = {
           unitKey,
           orderId: order.id,
           itemIndex,
           unitIndex,
-          id: it.id,                 // 🔴 item id’si de gelsin
+          id: it.id,
           name: it.name,
           price: it.price,
           note: it.note,
+
           isDrink,
-          isHotDrink,               // 🔥 barista için önemli
-          isNoOnion,                // 🧅 mutfak için
-          turkKahvesiSugar: it.turkKahvesiSugar ?? null,        // ☕ şeker bilgisi
-          milkOptions: it.milkOptions ?? { sutlu: false },      // 🥛 süt bilgisi
-         // ⬇️ Artık sıcak içecekler de ready olabiliyor
-  isReady: (!isDrink || isHotDrink) && unitIndex < readyCount,
+          isHotDrink,
+          isNoOnion,
+
+          turkKahvesiSugar: it.turkKahvesiSugar ?? null,
+          milkOptions: it.milkOptions ?? { sutlu: false },
+          cayStrength: it.cayStrength ?? null,         // 🔥 BURADA
+          espressoShots: it.espressoShots ?? null,
+
+          isReady: (!isDrink || isHotDrink) && unitIndex < readyCount,
           isServed: unitIndex < servedCount,
           isPaid: unitIndex < paidCount,
-        });
+        };
+
+        // 🔍 DEBUG: unit nasıl oluşmuş
+        console.log('UNIT BUILT:', unit.name, unit.cayStrength);
+
+        units.push(unit);
       }
     });
   });
 
   return units;
 }
-
 
 
   //------------------------------
@@ -512,17 +599,8 @@ function buildUnitsForTable(tableKey, tableOrders) {
 }
 
 function handleProductPress(item) {
-  const hotDrinkIds = ['turk-kahvesi', 'cappuccino', 'latte', 'filter-coffee', 'nescafe'];
-
-  const needsCustomization = [
-    'kofte-ekmek',
-    'hamburger',
-    'patso',
-    'karisik-tost',
-    'waffle',
-    ...hotDrinkIds,  // ☕ sıcak içecekler de custom
-  ].includes(item.id);
-
+  const needsCustomization = ['kofte-ekmek', 'hamburger', 'patso', 'karisik-tost', 'waffle', 'turk-kahvesi', 'cappuccino', 'latte', 'filter-coffee', 'nescafe', 'espresso', 'cay']
+    .includes(item.id);
   const needsOnion = item.id === 'kofte-ekmek';
 
   if (needsCustomization || needsOnion) {
@@ -537,29 +615,23 @@ function handleProductPress(item) {
       setOnionNo(0);
     }
 
+        // 🔥 Her yeni üründe süt bilgisini sıfırla
+    setMilkOptions({ sutlu: false });
+
+    // 🔥 Çay için default
+    if (item.id === 'cay') {
+      setCayStrength('normal');
+    }
+
+    // Kahve vb. başka şeyler de varsa burada ayarlanabilir
+
     setSauces({ ketcap: false, mayonez: false, aci: false });
     setNoteText('');
-
-    // ☕ Türk kahvesi şeker default: orta
-    if (item.id === 'turk-kahvesi') {
-      setTurkKahvesiSugar('medium');
-    } else {
-      setTurkKahvesiSugar('medium');
-    }
-
-    // 🥛 Kahveler için süt default: kapalı
-    if (hotDrinkIds.includes(item.id)) {
-      setMilkOptions({ sutlu: false });
-    } else {
-      setMilkOptions({ sutlu: false });
-    }
-
     setCustomModalVisible(true);
   } else {
     addItemToBasket(item);
   }
 }
-
 
 
 function toggleKitchenItemSelection(unitKey) {
@@ -596,6 +668,31 @@ function decrementItemInBasketById(id) {
     };
     return updated;
   });
+}
+
+function decrementBasketItemByIndex(index) {
+  setBasket((current) => {
+    if (index < 0 || index >= current.length) return current;
+
+    const item = current[index];
+    const qty = item.quantity || 0;
+
+    // 1 ise komple satırı kaldır
+    if (qty <= 1) {
+      return current.filter((_, i) => i !== index);
+    }
+
+    const updated = [...current];
+    updated[index] = {
+      ...item,
+      quantity: qty - 1,
+    };
+    return updated;
+  });
+}
+
+function removeBasketItemByIndex(index) {
+  setBasket((current) => current.filter((_, i) => i !== index));
 }
 
 
@@ -659,35 +756,53 @@ function readySelectedItemsForTable(tableKey) {
 }
 
 
-  function handleCustomizationComplete() {
-    if (!customProduct) return;
+function handleCustomizationComplete() {
+  if (!customProduct) return;
 
-    // Köfte ekmekte soğan adetleri toplamı quantity ile eşit olmalı
-    if (customProduct.id === 'kofte-ekmek') {
-      if (onionYes + onionNo !== quantity) {
-        setValidationMessage(
-          'Soğan adetleri toplamı ürün adediyle eşleşmiyor.'
-        );
-        setValidationModalVisible(true);
-        return;
-      }
+  // Köfte ekmekte soğan kontrolü
+  if (customProduct.id === 'kofte-ekmek') {
+    if (onionYes + onionNo !== quantity) {
+      setValidationMessage(
+        'Soğan adetleri toplamı ürün adediyle eşleşmiyor.'
+      );
+      setValidationModalVisible(true);
+      return;
     }
-
-addItemToBasket({
-  ...customProduct,
-  quantity,
-  onionYes,
-  onionNo,
-  sauces,
-  note: noteText,
-  turkKahvesiSugar: customProduct.id === 'turk-kahvesi' ? turkKahvesiSugar : null,
-  milkOptions,
-});
-
-
-
-    setCustomModalVisible(false);
   }
+
+  // 🔥 Espresso için fiyat ayarı:
+  // Menüdeki fiyat SINGLE kabul, DOUBLE ise 2x
+  const adjustedPrice =
+    customProduct.id === 'espresso'
+      ? (espressoShots === 'double'
+          ? customProduct.price * 2
+          : customProduct.price)
+      : customProduct.price;
+
+  const itemToAdd = {
+    ...customProduct,
+    price: adjustedPrice, // 💰 fiyatı override ediyoruz
+    quantity,
+    onionYes,
+    onionNo,
+    sauces,
+    note: noteText,
+
+    turkKahvesiSugar:
+      customProduct.id === 'turk-kahvesi' ? turkKahvesiSugar : null,
+
+    milkOptions, // sütlü kahveler için
+
+    cayStrength: customProduct.id === 'cay' ? cayStrength : null,
+    espressoShots: customProduct.id === 'espresso' ? espressoShots : null,
+  };
+
+  console.log('ADDING TO BASKET', itemToAdd);
+
+  addItemToBasket(itemToAdd);
+  setCustomModalVisible(false);
+}
+
 
   function increaseQuantity() {
     const newQ = quantity + 1;
@@ -953,38 +1068,10 @@ addItemToBasket({
   }
 
 
-
-
-  function formatOrderText(order) {
+function formatOrderText(order) {
   if (!order.items || order.items.length === 0) {
     return 'Empty order';
   }
-
-    // ---- TABLE → ORDERS grupla ----
-  const tablesForCashier = Object.entries(
-    orders.reduce((acc, order) => {
-      const key = String(order.tableId);
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(order);
-      return acc;
-    }, {})
-  );
-
-
-
-
-
-  // ---- STATUS HELPERS (CASHIER/WAITER için ortak kullanabiliriz) ----
-
-
-  function getServedStatusForUnit(unit) {
-    return unit.isServed ? 'SERVED' : 'NOT SERVED';
-  }
-
-  function getPaidStatusForUnit(unit) {
-    return unit.isPaid ? 'PAID' : 'NOT PAID';
-  }
-
 
   const lines = [];
 
@@ -1013,7 +1100,34 @@ addItemToBasket({
       if (s.aci) extras.push('Acı Sos');
     }
 
-    const baseText = `${item.quantity}x ${item.name}`;
+    // Türk kahvesi şeker bilgisi
+    if (item.turkKahvesiSugar) {
+      if (item.turkKahvesiSugar === 'no') extras.push('Şekersiz');
+      if (item.turkKahvesiSugar === 'medium') extras.push('Orta');
+      if (item.turkKahvesiSugar === 'sweet') extras.push('Şekerli');
+    }
+
+    // Sütlü kahve
+    if (item.milkOptions && item.milkOptions.sutlu) {
+      extras.push('Sütlü');
+    }
+
+    // Çay dem ayarı
+    if (item.cayStrength) {
+      if (item.cayStrength === 'acik') extras.push('Açık');
+      if (item.cayStrength === 'normal') extras.push('Normal');
+      if (item.cayStrength === 'demli') extras.push('Demli');
+    }
+
+    // Espresso shot ayarı
+    if (item.espressoShots) {
+      if (item.espressoShots === 'single') extras.push('Single');
+      if (item.espressoShots === 'double') extras.push('Double');
+    }
+
+    const qty = item.quantity || 0;
+    const baseText = `${qty}x ${item.name}`;
+
     if (extras.length === 0) {
       lines.push(baseText);
     } else {
@@ -1504,6 +1618,76 @@ const tablesForCashier = Object.entries(
                 </View>
               </>
             )}
+
+{/* ÇAY DEM AYARI */}
+{customProduct.id === 'cay' && (
+  <>
+    <Text style={styles.optionTitle}>Dem Ayarı</Text>
+    <View style={styles.sugarRow}>
+      <Pressable
+        style={[
+          styles.sugarOption,
+          cayStrength === 'acik' && styles.sugarOptionActive,
+        ]}
+        onPress={() => setCayStrength('acik')}
+      >
+        <Text style={styles.sugarOptionText}>Açık</Text>
+      </Pressable>
+
+      <Pressable
+        style={[
+          styles.sugarOption,
+          cayStrength === 'normal' && styles.sugarOptionActive,
+        ]}
+        onPress={() => setCayStrength('normal')}
+      >
+        <Text style={styles.sugarOptionText}>Normal</Text>
+      </Pressable>
+
+      <Pressable
+        style={[
+          styles.sugarOption,
+          cayStrength === 'demli' && styles.sugarOptionActive,
+        ]}
+        onPress={() => setCayStrength('demli')}
+      >
+        <Text style={styles.sugarOptionText}>Demli</Text>
+      </Pressable>
+    </View>
+  </>
+)}
+
+
+{/* ESPRESSO SHOT AYARI */}
+{customProduct.id === 'espresso' && (
+  <>
+    <Text style={styles.optionTitle}>Shot Seçimi</Text>
+    <View style={styles.sugarRow}>
+      <Pressable
+        style={[
+          styles.sugarOption,
+          espressoShots === 'single' && styles.sugarOptionActive,
+        ]}
+        onPress={() => setEspressoShots('single')}
+      >
+        <Text style={styles.sugarOptionText}>Single</Text>
+      </Pressable>
+
+      <Pressable
+        style={[
+          styles.sugarOption,
+          espressoShots === 'double' && styles.sugarOptionActive,
+        ]}
+        onPress={() => setEspressoShots('double')}
+      >
+        <Text style={styles.sugarOptionText}>Double</Text>
+      </Pressable>
+    </View>
+  </>
+)}
+
+
+
             {/* TÜRK KAHVESİ ŞEKER SEÇİMİ */}
 {customProduct.id === 'turk-kahvesi' && (
   <>
@@ -1621,33 +1805,166 @@ const tablesForCashier = Object.entries(
       </View>
     )}
 
-    {/* BOTTOM CART BAR */}
-    <View style={styles.cartBar}>
-      <View>
-        <Text style={styles.cartTitle}>Siparişim</Text>
-        <Text style={styles.cartSubtitle}>
-          {totalItems} ürün | TL {totalPrice.toFixed(2)}
+    {/* CART / SEPET MODAL */}
+{cartModalVisible && (
+  <View style={styles.validationOverlay}>
+    <View style={styles.cartModalBox}>
+      <Text style={styles.cartModalTitle}>Aktif Sipariş (Sepet)</Text>
+
+      <Text style={styles.cartModalSubtitle}>
+        Masa: {selectedTable ? selectedTable : 'Seçilmedi'}
+      </Text>
+      <Text style={styles.cartModalSubtitle}>
+        Toplam: {totalItems} ürün | TL {totalPrice.toFixed(2)}
+      </Text>
+
+      {basket.length === 0 ? (
+        <Text style={styles.cartModalEmpty}>
+          Sepette ürün yok.
         </Text>
-        {selectedTable && (
-          <Text style={styles.cartSubtitle}>
-            Masa {selectedTable}
-          </Text>
-        )}
-      </View>
-      <View style={styles.cartButtons}>
-        <Button
-          title="Temizle"
-          color="#c0392b"
-          onPress={clearBasket}
-        />
-        <Button
-          title="Siparişi Gönder"
-          color={selectedTable && basket.length > 0 ? '#27ae60' : '#aaa'}
-          onPress={submitOrder}
-          disabled={!selectedTable || basket.length === 0}
-        />
+      ) : (
+        <ScrollView style={styles.cartModalList}>
+          {basket.map((item, index) => {
+            // İsteğe bağlı: buraya da küçük “ekstralar” yazısı ekleyebiliriz
+            const extras = [];
+
+            if (item.onionYes || item.onionNo) {
+              if (item.onionYes > 0) extras.push(`${item.onionYes} Soğanlı`);
+              if (item.onionNo > 0) extras.push(`${item.onionNo} Soğansız`);
+            }
+
+            if (item.sauces) {
+              const s = item.sauces;
+              if (s.ketcap) extras.push('Ketçap');
+              if (s.mayonez) extras.push('Mayonez');
+              if (s.aci) extras.push('Acı Sos');
+            }
+
+            if (item.turkKahvesiSugar) {
+              if (item.turkKahvesiSugar === 'no') extras.push('Şekersiz');
+              if (item.turkKahvesiSugar === 'medium') extras.push('Orta');
+              if (item.turkKahvesiSugar === 'sweet') extras.push('Şekerli');
+            }
+
+            const milkEligibleIds = ['cappuccino', 'latte', 'filter-coffee', 'nescafe'];
+            if (
+              milkEligibleIds.includes(item.id) &&
+              item.milkOptions &&
+              item.milkOptions.sutlu
+            ) {
+              extras.push('Sütlü');
+            }
+
+            if (item.cayStrength) {
+              if (item.cayStrength === 'acik') extras.push('Açık');
+              if (item.cayStrength === 'normal') extras.push('Normal');
+              if (item.cayStrength === 'demli') extras.push('Demli');
+            }
+
+            if (item.espressoShots) {
+              if (item.espressoShots === 'single') extras.push('Single');
+              if (item.espressoShots === 'double') extras.push('Double');
+            }
+
+            const extrasText = extras.length > 0 ? ` (${extras.join(', ')})` : '';
+
+            return (
+              <View key={index} style={styles.cartModalRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cartModalItemName}>
+                    {item.quantity}x {item.name}{extrasText}
+                  </Text>
+                  <Text style={styles.cartModalItemPrice}>
+                    TL {(item.price * item.quantity).toFixed(2)}
+                  </Text>
+                </View>
+
+                <View style={styles.cartModalRowButtons}>
+                  {/* Miktarı 1 azalt */}
+                  <Pressable
+                    style={styles.cartModalQtyButton}
+                    onPress={() => decrementBasketItemByIndex(index)}
+                  >
+                    <Text style={styles.cartModalQtyButtonText}>-</Text>
+                  </Pressable>
+
+                  {/* Satırı tamamen sil */}
+                  <Pressable
+                    style={styles.cartModalRemoveButton}
+                    onPress={() => removeBasketItemByIndex(index)}
+                  >
+                    <Text style={styles.cartModalRemoveButtonText}>Sil</Text>
+                  </Pressable>
+                </View>
+              </View>
+            );
+          })}
+        </ScrollView>
+      )}
+
+      <View style={styles.modalButtonsRow}>
+        <Pressable
+          style={[styles.modalButton, styles.modalCancelButton]}
+          onPress={() => setCartModalVisible(false)}
+        >
+          <Text style={styles.modalButtonText}>Kapat</Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.modalButton, styles.modalConfirmButton]}
+          onPress={() => {
+            clearBasket();
+            setCartModalVisible(false);
+          }}
+        >
+          <Text style={styles.modalButtonText}>Hepsini Temizle</Text>
+        </Pressable>
       </View>
     </View>
+  </View>
+)}
+
+
+    {/* BOTTOM CART BAR */}
+
+<View style={styles.cartBar}>
+  {/* SOLDAN BİLGİ ALANI - TIKLANABİLİR */}
+  <Pressable
+    style={styles.cartInfoArea}
+    onPress={() => {
+      // Sepet boşsa açmaya gerek yok
+      if (basket.length > 0) {
+        setCartModalVisible(true);
+      }
+    }}
+  >
+    <Text style={styles.cartTitle}>Siparişim</Text>
+    <Text style={styles.cartSubtitle}>
+      {totalItems} ürün | TL {totalPrice.toFixed(2)}
+    </Text>
+    {selectedTable && (
+      <Text style={styles.cartSubtitle}>
+        Masa {selectedTable}
+      </Text>
+    )}
+  </Pressable>
+
+  {/* SAĞDAKİ BUTONLAR */}
+  <View style={styles.cartButtons}>
+    <Button
+      title="Temizle"
+      color="#c0392b"
+      onPress={clearBasket}
+    />
+    <Button
+      title="Siparişi Gönder"
+      color={selectedTable && basket.length > 0 ? '#27ae60' : '#aaa'}
+      onPress={submitOrder}
+      disabled={!selectedTable || basket.length === 0}
+    />
+  </View>
+</View>
+
   </View>
 )}
 
@@ -1931,23 +2248,43 @@ const tablesForCashier = Object.entries(
         const selectedCount = unreadyUnits.filter((u) =>
           selectedBaristaItems.includes(u.unitKey)
         ).length;
+const formatBaristaLabel = (unit) => {
+  const extras = [];
 
-        const formatBaristaLabel = (unit) => {
-          const extras = [];
+  if (unit.turkKahvesiSugar) {
+    if (unit.turkKahvesiSugar === 'no') extras.push('Şekersiz');
+    if (unit.turkKahvesiSugar === 'medium') extras.push('Orta');
+    if (unit.turkKahvesiSugar === 'sweet') extras.push('Şekerli');
+  }
 
-          if (unit.turkKahvesiSugar) {
-            if (unit.turkKahvesiSugar === 'no') extras.push('Şekersiz');
-            if (unit.turkKahvesiSugar === 'medium') extras.push('Orta');
-            if (unit.turkKahvesiSugar === 'sweet') extras.push('Şekerli');
-          }
+// Sütlü kahveler (çay ve espresso hariç)
+const milkEligibleIds = ['cappuccino', 'latte', 'filter-coffee', 'nescafe'];
+if (
+  milkEligibleIds.includes(unit.id) &&
+  unit.milkOptions &&
+  unit.milkOptions.sutlu
+) {
+  extras.push('Sütlü');
+}
 
-          if (unit.milkOptions && unit.milkOptions.sutlu) {
-            extras.push('Sütlü');
-          }
 
-          if (extras.length === 0) return unit.name;
-          return `${unit.name} (${extras.join(', ')})`;
-        };
+
+  if (unit.cayStrength) {
+    if (unit.cayStrength === 'acik') extras.push('Açık');
+    if (unit.cayStrength === 'normal') extras.push('Normal');
+    if (unit.cayStrength === 'demli') extras.push('Demli');
+  }
+
+  if (unit.espressoShots) {
+    if (unit.espressoShots === 'single') extras.push('Single');
+    if (unit.espressoShots === 'double') extras.push('Double');
+  }
+
+  if (extras.length === 0) return unit.name;
+  return `${unit.name} (${extras.join(', ')})`;
+};
+
+
 
         return (
           <View style={styles.cashierTableCard}>
@@ -2009,7 +2346,10 @@ const tablesForCashier = Object.entries(
                 </View>
 
                 {/* PENDING hot drinks */}
+                
                 {unreadyUnits.map((unit) => {
+                    console.log('BARISTA LABEL DEBUG', unit.name, unit.cayStrength);
+                  console.log('BARISTA UNIT', unit.name, unit.cayStrength);
                   const isSelected = selectedBaristaItems.includes(
                     unit.unitKey
                   );
@@ -2151,29 +2491,52 @@ const tablesForCashier = Object.entries(
               const selectedCount = unservedUnits.filter((u) =>
                 selectedWaiterItems.includes(u.unitKey)
               ).length;
-  const formatWaiterLabel = (unit) => {
-    const extras = [];
 
-    // Soğansız yemekler
-    if (unit.isNoOnion) {
-      extras.push('Soğansız');
-    }
+              const formatWaiterLabel = (unit) => {
+  const extras = [];
 
-    // Türk kahvesi şeker bilgisi
-    if (unit.turkKahvesiSugar) {
-      if (unit.turkKahvesiSugar === 'no') extras.push('Şekersiz');
-      if (unit.turkKahvesiSugar === 'medium') extras.push('Orta');
-      if (unit.turkKahvesiSugar === 'sweet') extras.push('Şekerli');
-    }
+  // Soğansız yemekler
+  if (unit.isNoOnion) {
+    extras.push('Soğansız');
+  }
 
-    // Sütlü kahveler
-    if (unit.milkOptions && unit.milkOptions.sutlu) {
-      extras.push('Sütlü');
-    }
+  // Türk kahvesi şeker bilgisi
+  if (unit.turkKahvesiSugar) {
+    if (unit.turkKahvesiSugar === 'no') extras.push('Şekersiz');
+    if (unit.turkKahvesiSugar === 'medium') extras.push('Orta');
+    if (unit.turkKahvesiSugar === 'sweet') extras.push('Şekerli');
+  }
 
-    if (extras.length === 0) return unit.name;
-    return `${unit.name} (${extras.join(', ')})`;
-  };
+  // Sütlü kahveler
+// Sütlü kahveler (çay ve espresso hariç)
+const milkEligibleIds = ['cappuccino', 'latte', 'filter-coffee', 'nescafe'];
+if (
+  milkEligibleIds.includes(unit.id) &&
+  unit.milkOptions &&
+  unit.milkOptions.sutlu
+) {
+  extras.push('Sütlü');
+}
+
+
+
+  // Çay dem ayarı
+  if (unit.cayStrength) {
+    if (unit.cayStrength === 'acik') extras.push('Açık');
+    if (unit.cayStrength === 'normal') extras.push('Normal');
+    if (unit.cayStrength === 'demli') extras.push('Demli');
+  }
+
+  // Espresso shot ayarı
+  if (unit.espressoShots) {
+    if (unit.espressoShots === 'single') extras.push('Single');
+    if (unit.espressoShots === 'double') extras.push('Double');
+  }
+
+  if (extras.length === 0) return unit.name;
+  return `${unit.name} (${extras.join(', ')})`;
+};
+
 
               return (
                 <View style={styles.cashierTableCard}>
@@ -2339,225 +2702,253 @@ const tablesForCashier = Object.entries(
       )}
 
 
-      {mode === 'CASHIER' && (
-        <View style={styles.cashierContainer}>
-          <Text style={styles.sectionTitle}>Cashier Overview</Text>
+ {mode === 'CASHIER' && (
+  <View style={styles.cashierContainer}>
+    <Text style={styles.sectionTitle}>Cashier Overview</Text>
 
-          {tablesForCashier.length === 0 && (
-            <Text style={styles.emptyText}>No orders yet.</Text>
-          )}
+    {tablesForCashier.length === 0 && (
+      <Text style={styles.emptyText}>No orders yet.</Text>
+    )}
 
-          <FlatList
-            data={tablesForCashier}
-            keyExtractor={([tableKey]) => tableKey}
-            renderItem={({ item }) => {
-              const [tableKey, tableOrders] = item;
-              const allUnits = buildUnitsForTable(tableKey, tableOrders);
+    <FlatList
+      data={tablesForCashier}
+      keyExtractor={([tableKey]) => tableKey}
+      renderItem={({ item }) => {
+        const [tableKey, tableOrders] = item;
+        const allUnits = buildUnitsForTable(tableKey, tableOrders);
 
-              if (allUnits.length === 0) return null;
+        if (allUnits.length === 0) return null;
 
-              const unpaidUnits = allUnits.filter(
-                (u) => !u.isPaid
-              );
-              const paidUnits = allUnits.filter((u) => u.isPaid);
+        const unpaidUnits = allUnits.filter((u) => !u.isPaid);
+        const paidUnits = allUnits.filter((u) => u.isPaid);
 
-              const totalAmount =
-                allUnits.reduce(
-                  (s, u) => s + u.price,
-                  0
-                );
-              const paidAmount = paidUnits.reduce(
-                (s, u) => s + u.price,
-                0
-              );
-              const unpaidAmount = unpaidUnits.reduce(
-                (s, u) => s + u.price,
-                0
-              );
+        const totalAmount = allUnits.reduce((s, u) => s + u.price, 0);
+        const paidAmount = paidUnits.reduce((s, u) => s + u.price, 0);
+        const unpaidAmount = unpaidUnits.reduce((s, u) => s + u.price, 0);
 
-              const selectedAmount = unpaidUnits
-                .filter((u) =>
-                  selectedCashierItems.includes(u.unitKey)
-                )
-                .reduce((s, u) => s + u.price, 0);
+        const selectedAmount = unpaidUnits
+          .filter((u) => selectedCashierItems.includes(u.unitKey))
+          .reduce((s, u) => s + u.price, 0);
 
-              const isExpanded = !!expandedTables[tableKey];
+        const isExpanded = !!expandedTables[tableKey];
 
-              const allUnpaidSelected =
-                unpaidUnits.length > 0 &&
-                unpaidUnits.every((u) =>
-                  selectedCashierItems.includes(u.unitKey)
-                );
+        const allUnpaidSelected =
+          unpaidUnits.length > 0 &&
+          unpaidUnits.every((u) =>
+            selectedCashierItems.includes(u.unitKey)
+          );
 
-              return (
-                <View style={styles.cashierTableCard}>
-                  {/* HEADER */}
-                  <Pressable
-                    onPress={() =>
-                      setExpandedTables((prev) => ({
-                        ...prev,
-                        [tableKey]: !prev[tableKey],
-                      }))
+        // 💸 Kasiyer etiketi: Soğansız, Şekersiz, Sütlü, Demli, Double vs.
+        const formatCashierLabel = (unit) => {
+          const extras = [];
+
+          // Soğansız yemek
+          if (unit.isNoOnion) {
+            extras.push('Soğansız');
+          }
+
+          // Türk kahvesi şeker
+          if (unit.turkKahvesiSugar) {
+            if (unit.turkKahvesiSugar === 'no') extras.push('Şekersiz');
+            if (unit.turkKahvesiSugar === 'medium') extras.push('Orta');
+            if (unit.turkKahvesiSugar === 'sweet') extras.push('Şekerli');
+          }
+
+          // Sütlü kahveler
+// Sütlü kahveler (çay ve espresso hariç)
+const milkEligibleIds = ['cappuccino', 'latte', 'filter-coffee', 'nescafe'];
+if (
+  milkEligibleIds.includes(unit.id) &&
+  unit.milkOptions &&
+  unit.milkOptions.sutlu
+) {
+  extras.push('Sütlü');
+}
+
+
+
+          // Çay dem ayarı
+          if (unit.cayStrength) {
+            if (unit.cayStrength === 'acik') extras.push('Açık');
+            if (unit.cayStrength === 'normal') extras.push('Normal');
+            if (unit.cayStrength === 'demli') extras.push('Demli');
+          }
+
+          // Espresso shot (single / double)
+          if (unit.espressoShots) {
+            if (unit.espressoShots === 'single') extras.push('Single');
+            if (unit.espressoShots === 'double') extras.push('Double');
+          }
+
+          if (extras.length === 0) return unit.name;
+          return `${unit.name} (${extras.join(', ')})`;
+        };
+
+        return (
+          <View style={styles.cashierTableCard}>
+            {/* HEADER */}
+            <Pressable
+              onPress={() =>
+                setExpandedTables((prev) => ({
+                  ...prev,
+                  [tableKey]: !prev[tableKey],
+                }))
+              }
+            >
+              <Text style={styles.cashierTableTitle}>
+                Masa {tableKey}
+              </Text>
+              <View style={styles.cashierSummaryRow}>
+                <Text style={styles.cashierSummaryText}>
+                  TOTAL: TL {totalAmount.toFixed(2)}
+                </Text>
+                <Text style={styles.cashierSummaryText}>
+                  PAID: TL {paidAmount.toFixed(2)}
+                </Text>
+                <Text style={styles.cashierSummaryText}>
+                  UNPAID: TL {unpaidAmount.toFixed(2)}
+                </Text>
+              </View>
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: '#888',
+                  marginTop: 2,
+                }}
+              >
+                {isExpanded ? '▲ Gizle' : '▼ Detayları Göster'}
+              </Text>
+            </Pressable>
+
+            {isExpanded && (
+              <>
+                {/* Select All / Clear All */}
+                <View style={styles.cashierSelectAllRow}>
+                  <Button
+                    title={
+                      allUnpaidSelected ? 'Clear All' : 'Select All'
                     }
-                  >
-                    <Text style={styles.cashierTableTitle}>
-                      Masa {tableKey}
-                    </Text>
-                    <View style={styles.cashierSummaryRow}>
-                      <Text style={styles.cashierSummaryText}>
-                        TOTAL: TL {totalAmount.toFixed(2)}
+                    color="#0984e3"
+                    onPress={() => {
+                      const allKeys = unpaidUnits.map(
+                        (u) => u.unitKey
+                      );
+                      if (allUnpaidSelected) {
+                        setSelectedCashierItems((prev) =>
+                          prev.filter((k) => !allKeys.includes(k))
+                        );
+                      } else {
+                        setSelectedCashierItems((prev) => [
+                          ...prev,
+                          ...allKeys.filter(
+                            (k) => !prev.includes(k)
+                          ),
+                        ]);
+                      }
+                    }}
+                  />
+                </View>
+
+                {/* UNPAID items */}
+                {unpaidUnits.map((unit) => {
+                  const isSelected =
+                    selectedCashierItems.includes(unit.unitKey);
+                  const kitchenStatus =
+                    getKitchenStatusForUnit(unit);
+                  const servedStatus =
+                    getServedStatusForUnit(unit);
+                  const paidStatus =
+                    getPaidStatusForUnit(unit);
+
+                  return (
+                    <Pressable
+                      key={unit.unitKey}
+                      style={({ pressed }) => [
+                        styles.cashierOrderRow,
+                        styles.cashierOrderRowUnpaid,
+                        isSelected &&
+                          styles.cashierOrderRowSelected,
+                        pressed && { opacity: 0.7 },
+                      ]}
+                      onPress={() =>
+                        toggleCashierItemSelection(unit.unitKey)
+                      }
+                    >
+                      <Text style={styles.cashierOrderText}>
+                        {formatCashierLabel(unit)} - TL{' '}
+                        {unit.price.toFixed(2)} [
+                        {kitchenStatus} | {servedStatus} |{' '}
+                        {paidStatus}]
                       </Text>
-                      <Text style={styles.cashierSummaryText}>
-                        PAID: TL {paidAmount.toFixed(2)}
-                      </Text>
-                      <Text style={styles.cashierSummaryText}>
-                        UNPAID: TL {unpaidAmount.toFixed(2)}
-                      </Text>
-                    </View>
+                    </Pressable>
+                  );
+                })}
+
+                {/* PAID items */}
+                {paidUnits.length > 0 && (
+                  <View style={{ marginTop: 6 }}>
                     <Text
                       style={{
                         fontSize: 12,
-                        color: '#888',
-                        marginTop: 2,
+                        color: '#555',
+                        marginBottom: 2,
                       }}
                     >
-                      {isExpanded
-                        ? '▲ Gizle'
-                        : '▼ Detayları Göster'}
+                      Paid items:
                     </Text>
-                  </Pressable>
+                    {paidUnits.map((unit) => {
+                      const kitchenStatus =
+                        getKitchenStatusForUnit(unit);
+                      const servedStatus =
+                        getServedStatusForUnit(unit);
+                      const paidStatus =
+                        getPaidStatusForUnit(unit);
 
-                  {isExpanded && (
-                    <>
-                      {/* Select All / Clear All */}
-                      <View style={styles.cashierSelectAllRow}>
-                        <Button
-                          title={
-                            allUnpaidSelected
-                              ? 'Clear All'
-                              : 'Select All'
-                          }
-                          color="#0984e3"
-                          onPress={() => {
-                            const allKeys = unpaidUnits.map(
-                              (u) => u.unitKey
-                            );
-                            if (allUnpaidSelected) {
-                              setSelectedCashierItems((prev) =>
-                                prev.filter(
-                                  (k) => !allKeys.includes(k)
-                                )
-                              );
-                            } else {
-                              setSelectedCashierItems((prev) => [
-                                ...prev,
-                                ...allKeys.filter(
-                                  (k) => !prev.includes(k)
-                                ),
-                              ]);
-                            }
-                          }}
-                        />
-                      </View>
-
-                      {/* UNPAID items */}
-                {unpaidUnits.map((unit) => {
-  const isSelected = selectedCashierItems.includes(unit.unitKey);
-  const kitchenStatus = getKitchenStatusForUnit(unit);
-  const servedStatus = getServedStatusForUnit(unit);
-  const paidStatus = getPaidStatusForUnit(unit);
-
-  return (
-    <Pressable
-      key={unit.unitKey}
-      style={({ pressed }) => [
-        styles.cashierOrderRow,
-        styles.cashierOrderRowUnpaid,          // hafif kırmızı arka plan
-        isSelected && styles.cashierOrderRowSelected, // seçilince hafif farklı renk
-        pressed && { opacity: 0.7 },           // SADECE opacity değişiyor
-      ]}
-      onPress={() => toggleCashierItemSelection(unit.unitKey)}
-    >
-      <Text style={styles.cashierOrderText}>
-        {unit.name} - TL {unit.price.toFixed(2)} [
-        {kitchenStatus} | {servedStatus} | {paidStatus}]
-      </Text>
-    </Pressable>
-  );
-})}
-
-
-                      {/* PAID items */}
-                      {paidUnits.length > 0 && (
-                        <View style={{ marginTop: 6 }}>
-                          <Text
-                            style={{
-                              fontSize: 12,
-                              color: '#555',
-                              marginBottom: 2,
-                            }}
-                          >
-                            Paid items:
-                          </Text>
-                          {paidUnits.map((unit) => {
-                            const kitchenStatus =
-                              getKitchenStatusForUnit(unit);
-                            const servedStatus =
-                              getServedStatusForUnit(unit);
-                            const paidStatus =
-                              getPaidStatusForUnit(unit);
-
-                            return (
-                              <View
-                                key={unit.unitKey}
-                                style={[
-                                  styles.cashierOrderRow,
-                                  styles.cashierOrderRowPaid,
-                                ]}
-                              >
-                                <Text
-                                  style={styles.cashierOrderText}
-                                >
-                                  {unit.name} - TL{' '}
-                                  {unit.price.toFixed(2)} [
-                                  {kitchenStatus} | {servedStatus}{' '}
-                                  | {paidStatus}]
-                                </Text>
-                              </View>
-                            );
-                          })}
-                        </View>
-                      )}
-
-                      {/* Pay */}
-                      <View style={styles.cashierPayRow}>
-                        <Text
-                          style={styles.cashierSummaryText}
+                      return (
+                        <View
+                          key={unit.unitKey}
+                          style={[
+                            styles.cashierOrderRow,
+                            styles.cashierOrderRowPaid,
+                          ]}
                         >
-                          Selected: TL{' '}
-                          {selectedAmount.toFixed(2)}
-                        </Text>
-                        <Button
-                          title="Pay"
-                          color={
-                            selectedAmount > 0
-                              ? '#27ae60'
-                              : '#aaa'
-                          }
-                          onPress={() =>
-                            paySelectedItemsForTable(tableKey)
-                          }
-                          disabled={selectedAmount === 0}
-                        />
-                      </View>
-                    </>
-                  )}
+                          <Text style={styles.cashierOrderText}>
+                            {formatCashierLabel(unit)} - TL{' '}
+                            {unit.price.toFixed(2)} [
+                            {kitchenStatus} | {servedStatus} |{' '}
+                            {paidStatus}]
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {/* Pay */}
+                <View style={styles.cashierPayRow}>
+                  <Text style={styles.cashierSummaryText}>
+                    Selected: TL {selectedAmount.toFixed(2)}
+                  </Text>
+                  <Button
+                    title="Pay"
+                    color={
+                      selectedAmount > 0 ? '#27ae60' : '#aaa'
+                    }
+                    onPress={() =>
+                      paySelectedItemsForTable(tableKey)
+                    }
+                    disabled={selectedAmount === 0}
+                  />
                 </View>
-              );
-            }}
-          />
-        </View>
-      )}
+              </>
+            )}
+          </View>
+        );
+      }}
+    />
+  </View>
+)}
+
 
 
     </View>
@@ -3443,6 +3834,93 @@ sugarOptionText: {
   fontSize: 12,
   fontWeight: '600',
   color: '#333',
+},
+
+cartInfoArea: {
+  flex: 1,
+},
+
+cartModalBox: {
+  width: '85%',
+  maxHeight: '80%',
+  backgroundColor: '#fff',
+  borderRadius: 16,
+  padding: 14,
+  elevation: 10,
+},
+
+cartModalTitle: {
+  fontSize: 18,
+  fontWeight: '700',
+  color: '#333',
+  marginBottom: 4,
+},
+
+cartModalSubtitle: {
+  fontSize: 13,
+  color: '#666',
+},
+
+cartModalEmpty: {
+  marginTop: 12,
+  fontSize: 14,
+  color: '#777',
+},
+
+cartModalList: {
+  marginTop: 10,
+  marginBottom: 10,
+},
+
+cartModalRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  paddingVertical: 6,
+  borderBottomWidth: 1,
+  borderBottomColor: '#eee',
+},
+
+cartModalItemName: {
+  fontSize: 14,
+  fontWeight: '600',
+  color: '#333',
+},
+
+cartModalItemPrice: {
+  fontSize: 13,
+  color: '#555',
+  marginTop: 2,
+},
+
+cartModalRowButtons: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 6,
+},
+
+cartModalQtyButton: {
+  paddingHorizontal: 10,
+  paddingVertical: 6,
+  borderRadius: 8,
+  backgroundColor: '#f1c40f',
+},
+
+cartModalQtyButtonText: {
+  color: '#333',
+  fontWeight: '700',
+},
+
+cartModalRemoveButton: {
+  paddingHorizontal: 10,
+  paddingVertical: 6,
+  borderRadius: 8,
+  backgroundColor: '#e74c3c',
+},
+
+cartModalRemoveButtonText: {
+  color: '#fff',
+  fontWeight: '700',
 },
 
 
