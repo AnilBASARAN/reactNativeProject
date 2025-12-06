@@ -194,6 +194,7 @@ export default function App() {
   const [expandedTables, setExpandedTables] = useState({});
 const [categoriesExpanded, setCategoriesExpanded] = useState(true);
 const [logs, setLogs] = useState([]);
+const [expandedLogs, setExpandedLogs] = useState({});
 
 
 
@@ -363,6 +364,8 @@ function baristaReadySelectedItemsForTable(tableKey) {
 }
 
 
+
+
   // ---------- BASKET & ORDER LOGIC ----------
 function addItemToBasket(item) {
   const qtyToAdd = item.quantity ?? 1;
@@ -423,6 +426,42 @@ function addItemToBasket(item) {
     Alert.alert('Ürün Notu', note);
   }
 }
+
+function isSameDay(d1, d2) {
+  return (
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate()
+  );
+}
+
+const now = new Date();
+const todayLogs = logs.filter((log) =>
+  isSameDay(new Date(log.closedAt), now)
+);
+
+const bossItemMap = {};
+let bossTotalTurnover = 0;
+
+todayLogs.forEach((log) => {
+  bossTotalTurnover += log.totalAmount || 0;
+  (log.itemsSummary || []).forEach((p) => {
+    if (!bossItemMap[p.id]) {
+      bossItemMap[p.id] = { ...p };
+    } else {
+      bossItemMap[p.id].count += p.count;
+    }
+  });
+});
+
+const bossProducts = Object.values(bossItemMap);
+const bossTotalItems = bossProducts.reduce((s, p) => s + p.count, 0);
+const bossFoodCount = bossProducts
+  .filter((p) => p.category !== 'DRINK')
+  .reduce((s, p) => s + p.count, 0);
+const bossDrinkCount = bossProducts
+  .filter((p) => p.category === 'DRINK')
+  .reduce((s, p) => s + p.count, 0);
 
 
 function submitOrder() {
@@ -622,7 +661,6 @@ function isTableFullyDone(tableKey, tableOrders) {
 
   return true; // tüm ürünler hazır + servis + ödenmiş
 }
-
 function closeTable(tableKey) {
   // Bu masaya ait current orders’ı bul
   const tableOrders = orders.filter(
@@ -633,6 +671,26 @@ function closeTable(tableKey) {
   const allUnits = buildUnitsForTable(String(tableKey), tableOrders);
   const totalAmount = allUnits.reduce((sum, u) => sum + (u.price || 0), 0);
 
+  // 🔥 Ürün özeti (kaç köfte, kaç içecek vs.)
+  const itemMap = {};
+  allUnits.forEach((u) => {
+    const menuDef = MENU_ITEMS.find((m) => m.id === u.id);
+    const category = menuDef?.category || 'OTHER';
+    const key = u.id;
+
+    if (!itemMap[key]) {
+      itemMap[key] = {
+        id: u.id,
+        name: u.name,
+        category,
+        count: 0,
+      };
+    }
+    itemMap[key].count += 1;
+  });
+
+  const itemsSummary = Object.values(itemMap);
+
   // Log’a ekle
   setLogs((prev) => [
     {
@@ -641,6 +699,7 @@ function closeTable(tableKey) {
       closedAt: new Date().toISOString(),
       totalAmount,
       itemCount: allUnits.length,
+      itemsSummary, // 🔥 burada saklıyoruz
     },
     ...prev,
   ]);
@@ -650,6 +709,7 @@ function closeTable(tableKey) {
     current.filter((o) => String(o.tableId) !== String(tableKey))
   );
 }
+
 
 
   //------------------------------
@@ -1399,6 +1459,12 @@ const tablesForCashier = Object.entries(
     color={mode === 'CASHIER' ? '#0acc2aff' : '#888'}
     onPress={() => setMode('CASHIER')}
   />
+  <Button
+  title="Boss"
+  color={mode === 'BOSS' ? '#0acc2aff' : '#888'}
+  onPress={() => setMode('BOSS')}
+/>
+
   <Button
   title="Log"
   color={mode === 'LOG' ? '#0acc2aff' : '#888'}
@@ -3069,27 +3135,102 @@ if (
     <Text style={styles.sectionTitle}>Log</Text>
 
     {logs.length === 0 ? (
-      <Text style={styles.emptyText}>
-        Henüz kapatılmış masa yok.
-      </Text>
+      <Text style={styles.emptyText}>Henüz kapatılmış masa yok.</Text>
     ) : (
       <FlatList
         data={logs}
         keyExtractor={(log) => log.id}
-        renderItem={({ item }) => (
-          <View style={styles.cashierTableCard}>
-            <Text style={styles.cashierTableTitle}>
-              Masa {item.tableId}
-            </Text>
-            <Text style={styles.cashierSummaryText}>
-              Toplam: TL {item.totalAmount.toFixed(2)} ({item.itemCount} ürün)
-            </Text>
-            <Text style={styles.cashierSummaryText}>
-              Kapatılma: {new Date(item.closedAt).toLocaleString()}
-            </Text>
-          </View>
-        )}
+        renderItem={({ item }) => {
+          const isExpanded = !!expandedLogs[item.id];
+          const itemsSummary = item.itemsSummary || [];
+
+          return (
+            <View style={styles.cashierTableCard}>
+              <Pressable
+                onPress={() =>
+                  setExpandedLogs((prev) => ({
+                    ...prev,
+                    [item.id]: !prev[item.id],
+                  }))
+                }
+              >
+                <Text style={styles.cashierTableTitle}>
+                  Masa {item.tableId}
+                </Text>
+                <Text style={styles.cashierSummaryText}>
+                  Toplam: TL {item.totalAmount.toFixed(2)} ({item.itemCount} ürün)
+                </Text>
+                <Text style={styles.cashierSummaryText}>
+                  Kapatılma: {new Date(item.closedAt).toLocaleString()}
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: '#888',
+                    marginTop: 2,
+                  }}
+                >
+                  {isExpanded ? 'Detayları gizle' : 'Detayları göster'}
+                </Text>
+              </Pressable>
+
+              {isExpanded && itemsSummary.length > 0 && (
+                <View style={{ marginTop: 6 }}>
+                  {itemsSummary.map((p) => (
+                    <Text
+                      key={p.id}
+                      style={styles.cashierOrderText}
+                    >
+                      {p.name} x {p.count}
+                    </Text>
+                  ))}
+                </View>
+              )}
+            </View>
+          );
+        }}
       />
+    )}
+  </View>
+)}
+
+{mode === 'BOSS' && (
+  <View style={styles.cashierContainer}>
+    <Text style={styles.sectionTitle}>Boss Mode (Gün Sonu)</Text>
+
+    {todayLogs.length === 0 ? (
+      <Text style={styles.emptyText}>
+        Bugün için kapatılmış masa yok.
+      </Text>
+    ) : (
+      <>
+        {/* Özet kartı */}
+        <View style={styles.cashierTableCard}>
+          <Text style={styles.cashierTableTitle}>Özet</Text>
+          <Text style={styles.cashierSummaryText}>
+            Ciro: TL {bossTotalTurnover.toFixed(2)}
+          </Text>
+          <Text style={styles.cashierSummaryText}>
+            Toplam Ürün: {bossTotalItems}
+          </Text>
+          <Text style={styles.cashierSummaryText}>
+            Yemek: {bossFoodCount} | İçecek: {bossDrinkCount}
+          </Text>
+        </View>
+
+        {/* Ürün bazlı liste */}
+        <FlatList
+          data={bossProducts}
+          keyExtractor={(p) => p.id}
+          renderItem={({ item }) => (
+            <View style={styles.cashierOrderRow}>
+              <Text style={styles.cashierOrderText}>
+                {item.name} — {item.count} adet
+              </Text>
+            </View>
+          )}
+        />
+      </>
     )}
   </View>
 )}
