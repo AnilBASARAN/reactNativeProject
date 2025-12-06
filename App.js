@@ -1578,17 +1578,18 @@ const tablesForCashier = Object.entries(
     color={mode === 'CASHIER' ? '#0acc2aff' : '#888'}
     onPress={() => setMode('CASHIER')}
   />
+    <Button
+  title="Log"
+  color={mode === 'LOG' ? '#0acc2aff' : '#888'}
+  onPress={() => setMode('LOG')}
+/>
   <Button
   title="Boss"
   color={mode === 'BOSS' ? '#0acc2aff' : '#888'}
   onPress={() => setMode('BOSS')}
 />
 
-  <Button
-  title="Log"
-  color={mode === 'LOG' ? '#0acc2aff' : '#888'}
-  onPress={() => setMode('LOG')}
-/>
+
  <Button
     title="Manager"
     color={mode === 'MANAGER' ? '#0acc2aff' : '#888'}
