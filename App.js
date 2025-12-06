@@ -523,6 +523,56 @@ function submitOrder() {
 }
 
 
+function formatManagerItemExtras(item) {
+  const extras = [];
+
+  // Köfte için soğanlı / soğansız
+  if (item.onionYes || item.onionNo) {
+    if (item.onionYes > 0) extras.push(`${item.onionYes} Soğanlı`);
+    if (item.onionNo > 0) extras.push(`${item.onionNo} Soğansız`);
+  }
+
+  // Soslar
+  if (item.sauces) {
+    const s = item.sauces;
+    if (s.ketcap) extras.push('Ketçap');
+    if (s.mayonez) extras.push('Mayonez');
+    if (s.aci) extras.push('Acı Sos');
+  }
+
+  // Türk kahvesi şeker
+  if (item.turkKahvesiSugar) {
+    if (item.turkKahvesiSugar === 'no') extras.push('Şekersiz');
+    if (item.turkKahvesiSugar === 'medium') extras.push('Orta');
+    if (item.turkKahvesiSugar === 'sweet') extras.push('Şekerli');
+  }
+
+  // Sütlü kahveler
+  if (item.milkOptions && item.milkOptions.sutlu) {
+    extras.push('Sütlü');
+  }
+
+  // Çay dem ayarı
+  if (item.cayStrength) {
+    if (item.cayStrength === 'acik') extras.push('Açık');
+    if (item.cayStrength === 'normal') extras.push('Normal');
+    if (item.cayStrength === 'demli') extras.push('Demli');
+  }
+
+  // Espresso shot
+  if (item.espressoShots) {
+    if (item.espressoShots === 'single') extras.push('Single');
+    if (item.espressoShots === 'double') extras.push('Double');
+  }
+
+  // Not
+  if (item.note) {
+    extras.push(`Not: ${item.note}`);
+  }
+
+  if (extras.length === 0) return '';
+  return extras.join(', ');
+}
 
 
 
@@ -985,6 +1035,75 @@ function handleCustomizationComplete() {
         : [...prev, unitKey]
     );
   }
+
+  // MANAGER: Bir siparişi komple sil
+function managerDeleteOrder(orderId) {
+  updateOrders((currentOrders) =>
+    currentOrders.filter((o) => o.id !== orderId)
+  );
+}
+
+// MANAGER: Bir masadaki TÜM siparişleri sil
+function managerDeleteTable(tableKey) {
+  updateOrders((currentOrders) =>
+    currentOrders.filter(
+      (o) => String(o.tableId) !== String(tableKey)
+    )
+  );
+}
+
+// MANAGER: Bir sipariş içindeki item miktarını değiştir (±1)
+function managerChangeItemQuantity(orderId, itemIndex, delta) {
+  updateOrders((currentOrders) => {
+    const updated = [];
+
+    currentOrders.forEach((order) => {
+      if (order.id !== orderId) {
+        updated.push(order);
+        return;
+      }
+
+      const newItems = [];
+      order.items.forEach((it, idx) => {
+        if (idx !== itemIndex) {
+          newItems.push(it);
+          return;
+        }
+
+        const oldQty = it.quantity || 0;
+        const newQty = oldQty + delta;
+
+        // 0 veya altına düşerse bu item'i tamamen sil
+        if (newQty <= 0) {
+          return;
+        }
+
+        const readyCount = Math.min(it.readyCount || 0, newQty);
+        const servedCount = Math.min(it.servedCount || 0, newQty);
+        const paidCount = Math.min(it.paidCount || 0, newQty);
+
+        newItems.push({
+          ...it,
+          quantity: newQty,
+          readyCount,
+          servedCount,
+          paidCount,
+        });
+      });
+
+      // Eğer sipariş içinde hiç item kalmadıysa, o order'ı da eklemiyoruz (tamamen silinir)
+      if (newItems.length > 0) {
+        updated.push({
+          ...order,
+          items: newItems,
+        });
+      }
+    });
+
+    return updated;
+  });
+}
+
 
 
   // ---- ACTIONS: KITCHEN → READY ----
@@ -1470,6 +1589,11 @@ const tablesForCashier = Object.entries(
   color={mode === 'LOG' ? '#0acc2aff' : '#888'}
   onPress={() => setMode('LOG')}
 />
+ <Button
+    title="Manager"
+    color={mode === 'MANAGER' ? '#0acc2aff' : '#888'}
+    onPress={() => setMode('MANAGER')}
+  />
 
 </View>
 
@@ -3236,6 +3360,119 @@ if (
 )}
 
 
+{mode === 'MANAGER' && (
+  <View style={styles.cashierContainer}>
+    <Text style={styles.sectionTitle}>Manager Mode</Text>
+
+    {tablesForCashier.length === 0 ? (
+      <Text style={styles.emptyText}>
+        Aktif masa / sipariş yok.
+      </Text>
+    ) : (
+      <FlatList
+        data={tablesForCashier}
+        keyExtractor={([tableKey]) => tableKey}
+        renderItem={({ item }) => {
+          const [tableKey, tableOrders] = item;
+
+          return (
+            <View style={styles.cashierTableCard}>
+              {/* Masa başlığı + toplu silme */}
+              <View style={styles.managerTableHeader}>
+                <Text style={styles.cashierTableTitle}>
+                  Masa {tableKey}
+                </Text>
+                <Pressable
+                  style={styles.managerDangerButton}
+                  onPress={() => managerDeleteTable(tableKey)}
+                >
+                  <Text style={styles.managerDangerButtonText}>
+                    Masayı Temizle
+                  </Text>
+                </Pressable>
+              </View>
+
+              {tableOrders.map((order) => (
+                <View key={order.id} style={styles.managerOrderBlock}>
+                  <View style={styles.managerOrderHeader}>
+                    <Text style={styles.cashierSummaryText}>
+                      Sipariş ID: {order.id.slice(0, 6)}...
+                    </Text>
+                    <Pressable
+                      style={styles.managerSmallDangerButton}
+                      onPress={() => managerDeleteOrder(order.id)}
+                    >
+                      <Text style={styles.managerDangerButtonText}>
+                        Siparişi Sil
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  {/* Item listesi */}
+                  {order.items.map((it, idx) => {
+                    const extrasText = formatManagerItemExtras(it);
+
+                    return (
+                      <View
+                        key={idx}
+                        style={styles.managerItemRow}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.managerItemName}>
+                            {it.name} (x{it.quantity || 0})
+                          </Text>
+
+                          {extrasText ? (
+                            <Text style={styles.managerItemExtras}>
+                              {extrasText}
+                            </Text>
+                          ) : null}
+                        </View>
+
+                        <View style={styles.managerItemControls}>
+                          <Pressable
+                            style={styles.managerQtyButton}
+                            onPress={() =>
+                              managerChangeItemQuantity(
+                                order.id,
+                                idx,
+                                -1
+                              )
+                            }
+                          >
+                            <Text style={styles.managerQtyButtonText}>
+                              -
+                            </Text>
+                          </Pressable>
+                          <Pressable
+                            style={styles.managerQtyButton}
+                            onPress={() =>
+                              managerChangeItemQuantity(
+                                order.id,
+                                idx,
+                                +1
+                              )
+                            }
+                          >
+                            <Text style={styles.managerQtyButtonText}>
+                              +
+                            </Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
+          );
+        }}
+      />
+    )}
+  </View>
+)}
+
+
     </View>
   );
 }
@@ -4236,6 +4473,82 @@ menuSelectorHeader: {
   justifyContent: 'space-between',
 },
 
+  managerTableHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+
+  managerOrderBlock: {
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#ddd',
+  },
+
+  managerOrderHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+
+  managerItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+
+  managerItemName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333',
+  },
+
+  managerItemControls: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+
+  managerQtyButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: '#f1c40f',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  managerQtyButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+    marginTop: -1,
+  },
+
+  managerDangerButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#c0392b',
+  },
+
+  managerSmallDangerButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: '#e74c3c',
+  },
+
+  managerDangerButtonText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#fff',
+  },
 
 
 });
