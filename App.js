@@ -192,6 +192,8 @@ export default function App() {
   const [selectedKitchenItems, setSelectedKitchenItems] = useState([]);
   const [selectedBaristaItems, setSelectedBaristaItems] = useState([]); // 👈 YENİ
   const [expandedTables, setExpandedTables] = useState({});
+const [categoriesExpanded, setCategoriesExpanded] = useState(true);
+const [logs, setLogs] = useState([]);
 
 
 
@@ -588,6 +590,65 @@ function buildUnitsForTable(tableKey, tableOrders) {
   });
 
   return units;
+}
+
+function isTableFullyDone(tableKey, tableOrders) {
+  if (!Array.isArray(tableOrders) || tableOrders.length === 0) return false;
+
+  for (const order of tableOrders) {
+    if (!order || !Array.isArray(order.items)) continue;
+
+    for (const it of order.items) {
+      const qty = it.quantity || 0;
+      if (qty === 0) continue;
+
+      const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
+      const isDrink = menuDef?.category === 'DRINK';
+      const isHotDrink = !!(isDrink && menuDef?.isHot);
+
+      const ready = it.readyCount || 0;
+      const served = it.servedCount || 0;
+      const paid = it.paidCount || 0;
+
+      // Pişmiş olması sadece yemek + sıcak içecekler için zorunlu
+      if ((!isDrink || isHotDrink) && ready < qty) {
+        return false;
+      }
+
+      if (served < qty) return false;
+      if (paid < qty) return false;
+    }
+  }
+
+  return true; // tüm ürünler hazır + servis + ödenmiş
+}
+
+function closeTable(tableKey) {
+  // Bu masaya ait current orders’ı bul
+  const tableOrders = orders.filter(
+    (o) => String(o.tableId) === String(tableKey)
+  );
+
+  // Tutar / adet hesabı için unit’leri kullan
+  const allUnits = buildUnitsForTable(String(tableKey), tableOrders);
+  const totalAmount = allUnits.reduce((sum, u) => sum + (u.price || 0), 0);
+
+  // Log’a ekle
+  setLogs((prev) => [
+    {
+      id: Date.now().toString(),
+      tableId: String(tableKey),
+      closedAt: new Date().toISOString(),
+      totalAmount,
+      itemCount: allUnits.length,
+    },
+    ...prev,
+  ]);
+
+  // Ana orders listesinden bu masayı tamamen sil
+  updateOrders((current) =>
+    current.filter((o) => String(o.tableId) !== String(tableKey))
+  );
 }
 
 
@@ -1302,9 +1363,13 @@ const tablesForCashier = Object.entries(
     <View style={styles.appContainer}>
 
   {/* LOGO */}
-   <View style={{ width: '100%', marginHorizontal: -16 }}>
-   <Image source={APP_LOGO} style={styles.logoImage} />
-</View>
+<Image
+  source={APP_LOGO}
+  style={[
+    styles.logoImage,
+    Platform.OS === 'web' && { width: 1200, height: 150 }  // web’de daha da küçük
+  ]}
+/>
 
 
       {/* Mode switcher */}
@@ -1334,6 +1399,12 @@ const tablesForCashier = Object.entries(
     color={mode === 'CASHIER' ? '#0acc2aff' : '#888'}
     onPress={() => setMode('CASHIER')}
   />
+  <Button
+  title="Log"
+  color={mode === 'LOG' ? '#0acc2aff' : '#888'}
+  onPress={() => setMode('LOG')}
+/>
+
 </View>
 
 
@@ -1376,30 +1447,42 @@ const tablesForCashier = Object.entries(
 
     {/* Main waiter layout */}
     <View style={styles.waiterContent}>
-      {/* KATEGORİLER: ÜSTTE, TEK SATIR / WRAP */}
-      <View style={styles.categoryRow}>
-        {CATEGORIES.map((cat) => (
-          <Pressable
-            key={cat.id}
-            onPress={() => setSelectedCategory(cat.id)}
+{/* MENÜ SEÇ (Masa Seç gibi aç/kapa) */}
+<View style={styles.categorySection}>
+
+  <Pressable
+    style={styles.categorySelectorHeader}
+    onPress={() => setCategoriesExpanded(prev => !prev)}
+  >
+    <Text style={styles.sectionTitle}>Menü Seç</Text>
+  </Pressable>
+
+  {categoriesExpanded && (
+    <View style={styles.categoryRow}>
+      {CATEGORIES.map((cat) => (
+        <Pressable
+          key={cat.id}
+          onPress={() => setSelectedCategory(cat.id)}
+          style={[
+            styles.categoryButton,
+            selectedCategory === cat.id && styles.categoryButtonSelected,
+          ]}
+        >
+          <Text
             style={[
-              styles.categoryButton,
-              selectedCategory === cat.id &&
-                styles.categoryButtonSelected,
+              styles.categoryText,
+              selectedCategory === cat.id && styles.categoryTextSelected,
             ]}
           >
-            <Text
-              style={[
-                styles.categoryText,
-                selectedCategory === cat.id &&
-                  styles.categoryTextSelected,
-              ]}
-            >
-              {cat.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+            {cat.label}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  )}
+</View>
+
+
 
       {/* ALTTA: ÜRÜN GRID */}
       <View style={styles.menuGridContainer}>
@@ -2734,6 +2817,7 @@ if (
       renderItem={({ item }) => {
         const [tableKey, tableOrders] = item;
         const allUnits = buildUnitsForTable(tableKey, tableOrders);
+        const fullyDone = isTableFullyDone(tableKey, tableOrders);
 
         if (allUnits.length === 0) return null;
 
@@ -2943,21 +3027,34 @@ if (
                 )}
 
                 {/* Pay */}
-                <View style={styles.cashierPayRow}>
-                  <Text style={styles.cashierSummaryText}>
-                    Selected: TL {selectedAmount.toFixed(2)}
-                  </Text>
-                  <Button
-                    title="Pay"
-                    color={
-                      selectedAmount > 0 ? '#27ae60' : '#aaa'
-                    }
-                    onPress={() =>
-                      paySelectedItemsForTable(tableKey)
-                    }
-                    disabled={selectedAmount === 0}
-                  />
-                </View>
+           <View style={styles.cashierPayRow}>
+  <View>
+    <Text style={styles.cashierSummaryText}>
+      Selected: TL {selectedAmount.toFixed(2)}
+    </Text>
+    {fullyDone && (
+      <Text style={[styles.cashierSummaryText, { color: '#27ae60' }]}>
+        Masa tamamen hazır, servis edilmiş ve ödenmiş.
+      </Text>
+    )}
+  </View>
+
+  <View style={{ flexDirection: 'row', gap: 8 }}>
+    <Button
+      title="Pay"
+      color={selectedAmount > 0 ? '#27ae60' : '#aaa'}
+      onPress={() => paySelectedItemsForTable(tableKey)}
+      disabled={selectedAmount === 0}
+    />
+    <Button
+      title="Reset"
+      color={fullyDone ? '#c0392b' : '#ccc'}
+      onPress={() => fullyDone && closeTable(tableKey)}
+      disabled={!fullyDone}
+    />
+  </View>
+</View>
+
               </>
             )}
           </View>
@@ -2967,6 +3064,35 @@ if (
   </View>
 )}
 
+{mode === 'LOG' && (
+  <View style={styles.cashierContainer}>
+    <Text style={styles.sectionTitle}>Log</Text>
+
+    {logs.length === 0 ? (
+      <Text style={styles.emptyText}>
+        Henüz kapatılmış masa yok.
+      </Text>
+    ) : (
+      <FlatList
+        data={logs}
+        keyExtractor={(log) => log.id}
+        renderItem={({ item }) => (
+          <View style={styles.cashierTableCard}>
+            <Text style={styles.cashierTableTitle}>
+              Masa {item.tableId}
+            </Text>
+            <Text style={styles.cashierSummaryText}>
+              Toplam: TL {item.totalAmount.toFixed(2)} ({item.itemCount} ürün)
+            </Text>
+            <Text style={styles.cashierSummaryText}>
+              Kapatılma: {new Date(item.closedAt).toLocaleString()}
+            </Text>
+          </View>
+        )}
+      />
+    )}
+  </View>
+)}
 
 
     </View>
@@ -3942,18 +4068,31 @@ cartModalRemoveButtonText: {
 },
 logoContainer: {
   width: '100%',
-  paddingHorizontal: 0,
   alignItems: 'center',
   justifyContent: 'center',
-  marginBottom: 8,
   marginTop: 8,
+  marginBottom: 8,
 },
 
+
 logoImage: {
-  width: '100%',
-  height: undefined,
-  aspectRatio: 750 / 250,
+  marginTop:-60,
+  marginBottom:-50,
+  width: 500,
+  height: 170,
   resizeMode: 'contain',
+  alignSelf: 'center',
+},
+
+
+categorySection: {
+  marginBottom: 8,
+},
+
+menuSelectorHeader: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
 },
 
 
