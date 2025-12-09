@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import GoalItem from './components/GoalItem';
 
-const TABLES = [1, 2, 3, 4, 5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22];
+const TABLES = [1, 2, 3, 4, 5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,"Paket1","Paket2",];
 
 const MENU_ITEMS = [
   // MEAT
@@ -42,6 +42,9 @@ const MENU_ITEMS = [
 { id: 'coke', name: 'Coca Cola', price: 70, category: 'DRINK', isHot: false },
 { id: 'fanta', name: 'Fanta', price: 70, category: 'DRINK', isHot: false },
 { id: 'ayran', name: 'Ayran', price: 50, category: 'DRINK', isHot: false },
+{ id: 'su', name: 'Su', price: 20, category: 'DRINK', isHot: false },
+{ id: 'soda', name: 'soda', price: 40, category: 'DRINK', isHot: false },
+{ id: 'limonluSoda', name: 'Limonlu Soda', price: 50, category: 'DRINK', isHot: false },
 
 // DRINK - SICAK
 { id: 'turk-kahvesi', name: 'Türk Kahvesi', price: 100, category: 'DRINK', isHot: true },
@@ -97,6 +100,9 @@ const PRODUCT_IMAGES = {
   coke: require('./assets/drink-coke.jpg'),
   fanta: require('./assets/drink-fanta.jpg'),
   ayran: require('./assets/drink-ayran.jpg'),
+  su: require('./assets/su.jpg'),
+  limonluSoda: require('./assets/limonlu-soda.jpg'),
+  soda: require('./assets/soda.jpg'),
 
   // Sıcak içecekler
     'turk-kahvesi': require('./assets/turkish-coffee.jpg'),
@@ -113,6 +119,9 @@ const DRINK_OPTIONS = [
   { id: 'coke', label: 'Coca Cola', image: require('./assets/drink-coke.jpg') },
   { id: 'fanta', label: 'Fanta', image: require('./assets/drink-fanta.jpg') },
   { id: 'ayran', label: 'Ayran', image: require('./assets/drink-ayran.jpg') },
+  { id: 'su', label: 'Su', image: require('./assets/su.jpg') },
+  { id: 'soda', label: 'Soda', image: require('./assets/soda.jpg') },
+  { id: 'limonluSoda', label: 'Limonlu Soda', image: require('./assets/limonlu-soda.jpg') },
 ];
 
 const SAUCE_OPTIONS = [
@@ -162,6 +171,33 @@ async function syncOrdersToServer(newOrders) {
   }
 }
 
+async function fetchLogsFromServer() {
+  try {
+    const res = await fetch(`${API_URL}/logs`);
+    if (!res.ok) {
+      console.log('Failed to fetch logs from server');
+      return [];
+    }
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data;
+  } catch (err) {
+    console.log('Error fetching logs from server:', err);
+    return [];
+  }
+}
+
+async function syncLogsToServer(newLogs) {
+  try {
+    await fetch(`${API_URL}/logs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newLogs),
+    });
+  } catch (err) {
+    console.log('Error syncing logs to server:', err);
+  }
+}
 
 
 export default function App() {
@@ -232,6 +268,10 @@ const [drinkCounts, setDrinkCounts] = useState({
   coke: 0,
   fanta: 0,
   ayran: 0,
+  su:0,
+  soda:0,
+  limonluSoda:0,
+
 });
 
 
@@ -248,58 +288,57 @@ const [drinkCounts, setDrinkCounts] = useState({
 
     // Uygulama açılınca server’dan orders çek + 2 saniyede bir yenile
   // Uygulama açılınca server’dan orders çek + 2 saniyede bir yenile
-  React.useEffect(() => {
-    let isMounted = true;
+React.useEffect(() => {
+  let isMounted = true;
 
-    const loadFromServer = async () => {
-      try {
-        const serverOrders = await fetchOrdersFromServer();
-        if (isMounted) {
-          setOrders(serverOrders);
-        }
-      } catch (err) {
-        console.log('Initial / polling load error:', err);
-      }
-    };
+  const loadFromServer = async () => {
+    try {
+      const serverOrders = await fetchOrdersFromServer();
+      if (isMounted) setOrders(serverOrders);
 
-    // 🔹 1) Uygulama ilk açıldığında hemen çek
-    loadFromServer();
+      const serverLogs = await fetchLogsFromServer();
+      if (isMounted) setLogs(serverLogs);
+    } catch (err) {
+      console.log('Initial / polling load error:', err);
+    }
+  };
 
-    // 🔹 2) 2 saniyede bir tekrar çek (multi-device sync için)
-    const intervalId = setInterval(loadFromServer, 2000);
+  loadFromServer();
+  const intervalId = setInterval(loadFromServer, 2000);
 
-    // 🔹 3) Cleanup
-    return () => {
-      isMounted = false;
-      clearInterval(intervalId);
-    };
-  }, []);
+  return () => {
+    isMounted = false;
+    clearInterval(intervalId);
+  };
+}, []);
 
 
   // ---------- FILTERED MENU ----------
-const filteredMenuItems = MENU_ITEMS.filter((item) => {
-  if (selectedCategory === 'POPULAR') {
-    return POPULAR_IDS.includes(item.id);
-  }
-  if (selectedCategory === 'MEAT') {
-    return item.category === 'MEAT';
-  }
-  if (selectedCategory === 'TOAST') {
-    return item.category === 'TOAST';
-  }
-  if (selectedCategory === 'DESSERT') {
-    return item.category === 'DESSERT';
-  }
+const filteredMenuItems = React.useMemo(() => {
+  return MENU_ITEMS.filter((item) => {
+    if (selectedCategory === 'POPULAR') {
+      return POPULAR_IDS.includes(item.id);
+    }
+    if (selectedCategory === 'MEAT') {
+      return item.category === 'MEAT';
+    }
+    if (selectedCategory === 'TOAST') {
+      return item.category === 'TOAST';
+    }
+    if (selectedCategory === 'DESSERT') {
+      return item.category === 'DESSERT';
+    }
     if (selectedCategory === 'DRINK') {
-    // Soğuk içecekler
-    return item.category === 'DRINK' && !item.isHot;
-  }
-  if (selectedCategory === 'HOT_DRINK') {
-    // Sıcak içecekler
-    return item.category === 'DRINK' && item.isHot;
-  }
-  return true;
-});
+      // Soğuk içecekler
+      return item.category === 'DRINK' && !item.isHot;
+    }
+    if (selectedCategory === 'HOT_DRINK') {
+      // Sıcak içecekler
+      return item.category === 'DRINK' && item.isHot;
+    }
+    return true;
+  });
+}, [selectedCategory]);
 
 /// TOGGLE ME
 
@@ -367,7 +406,13 @@ function baristaReadySelectedItemsForTable(tableKey) {
 
 
   // ---------- BASKET & ORDER LOGIC ----------
-function addItemToBasket(item) {
+
+  function addItemToBasket(item) {
+  if (!item) {
+    console.log('addItemToBasket: item is null/undefined');
+    return;
+  }
+
   const qtyToAdd = item.quantity ?? 1;
 
   setBasket((current) => {
@@ -379,11 +424,9 @@ function addItemToBasket(item) {
       sauces: item.sauces ?? {},
       turkKahvesiSugar: item.turkKahvesiSugar ?? null,
       milkOptions: item.milkOptions ?? {},
+      cayStrength: item.cayStrength ?? null,
+      espressoShots: item.espressoShots ?? null,
       note: item.note ?? '',
-       turkKahvesiSugar: customProduct.id === 'turk-kahvesi' ? turkKahvesiSugar : null,
-  milkOptions,
-  cayStrength: customProduct.id === 'cay' ? cayStrength : null,
-  espressoShots: customProduct.id === 'espresso' ? espressoShots : null,
     });
 
     // Aynı config'e sahip bir satır var mı?
@@ -443,6 +486,21 @@ const todayLogs = logs.filter((log) =>
 const bossItemMap = {};
 let bossTotalTurnover = 0;
 
+
+
+const bossTotalCash = todayLogs.reduce(
+  (sum, log) => sum + (log.paymentSummary?.cash || 0),
+  0
+);
+
+const bossTotalCard = todayLogs.reduce(
+  (sum, log) => sum + (log.paymentSummary?.card || 0),
+  0
+);
+
+
+
+
 todayLogs.forEach((log) => {
   bossTotalTurnover += log.totalAmount || 0;
   (log.itemsSummary || []).forEach((p) => {
@@ -476,27 +534,30 @@ function submitOrder() {
     return;
   }
 
-  const selectedItems = basket.map((item) => ({
-    id: item.id,
-    name: item.name,
-    price: item.price,
-    quantity: item.quantity,
-    onionYes: item.onionYes ?? 0,
-    onionNo: item.onionNo ?? 0,
-    drinks: item.drinks ?? { coke: 0, fanta: 0, ayran: 0 },
-    sauces: item.sauces ?? {
-      ketcap: false,
-      mayonez: false,
-      aci: false,
-    },
-    turkKahvesiSugar: item.turkKahvesiSugar ?? null,
-    milkOptions: item.milkOptions ?? { sutlu: false },
-    cayStrength: item.cayStrength ?? null,
-    espressoShots: item.espressoShots ?? null,
-    paidCount: item.paidCount || 0,
-    servedCount: item.servedCount || 0,
-    note: item.note ?? '',
-  }));
+const selectedItems = basket.map((item) => ({
+  id: item.id,
+  name: item.name,
+  price: item.price,
+  quantity: item.quantity,
+  onionYes: item.onionYes ?? 0,
+  onionNo: item.onionNo ?? 0,
+  drinks: item.drinks ?? { coke: 0, fanta: 0, ayran: 0, soda: 0, limonluSoda: 0, su: 0 },
+  sauces: item.sauces ?? {
+    ketcap: false,
+    mayonez: false,
+    aci: false,
+  },
+  turkKahvesiSugar: item.turkKahvesiSugar ?? null,
+  milkOptions: item.milkOptions ?? { sutlu: false },
+  cayStrength: item.cayStrength ?? null,
+  espressoShots: item.espressoShots ?? null,
+  paidCount: item.paidCount || 0,
+  paidCashCount: item.paidCashCount || 0,
+  paidCardCount: item.paidCardCount || 0,
+  servedCount: item.servedCount || 0,
+  note: item.note ?? '',
+}));
+
 
   const orderNote = basket
     .map((item) => item.note)
@@ -712,16 +773,21 @@ function isTableFullyDone(tableKey, tableOrders) {
   return true; // tüm ürünler hazır + servis + ödenmiş
 }
 function closeTable(tableKey) {
-  // Bu masaya ait current orders’ı bul
+  // 1) Bu masaya ait current orders’ı bul
   const tableOrders = orders.filter(
     (o) => String(o.tableId) === String(tableKey)
   );
 
-  // Tutar / adet hesabı için unit’leri kullan
-  const allUnits = buildUnitsForTable(String(tableKey), tableOrders);
-  const totalAmount = allUnits.reduce((sum, u) => sum + (u.price || 0), 0);
+  if (tableOrders.length === 0) return;
 
-  // 🔥 Ürün özeti (kaç köfte, kaç içecek vs.)
+  // 2) Unit listesi (log & özet için)
+  const allUnits = buildUnitsForTable(String(tableKey), tableOrders);
+  const totalAmount = allUnits.reduce(
+    (sum, u) => sum + (u.price || 0),
+    0
+  );
+
+  // 3) Ürün özet tablosu (kaç hamburger, kaç içecek vs.)
   const itemMap = {};
   allUnits.forEach((u) => {
     const menuDef = MENU_ITEMS.find((m) => m.id === u.id);
@@ -738,28 +804,72 @@ function closeTable(tableKey) {
     }
     itemMap[key].count += 1;
   });
-
   const itemsSummary = Object.values(itemMap);
 
-  // Log’a ekle
-  setLogs((prev) => [
-    {
-      id: Date.now().toString(),
-      tableId: String(tableKey),
-      closedAt: new Date().toISOString(),
-      totalAmount,
-      itemCount: allUnits.length,
-      itemsSummary, // 🔥 burada saklıyoruz
-    },
-    ...prev,
-  ]);
+  // 4) 💰 Nakit / Kart toplamlarını hesapla
+  let cashTotal = 0;
+  let cardTotal = 0;
 
-  // Ana orders listesinden bu masayı tamamen sil
-  updateOrders((current) =>
-    current.filter((o) => String(o.tableId) !== String(tableKey))
+  tableOrders.forEach((order) => {
+    (order.items || []).forEach((it) => {
+      const qtyCash = it.paidCashCount || 0;
+      const qtyCard = it.paidCardCount || 0;
+
+      const menuDef = MENU_ITEMS.find((m) => m.id === it.id);
+      const unitPrice = menuDef?.price || 0;
+
+      cashTotal += unitPrice * qtyCash;
+      cardTotal += unitPrice * qtyCard;
+    });
+  });
+
+  // 5) LOG kaydı oluştur
+  const logEntry = {
+    id: `${tableKey}-${Date.now()}`,
+    tableId: String(tableKey),
+    closedAt: new Date().toISOString(),
+    totalAmount,
+    itemCount: allUnits.length,
+    itemsSummary,
+    paymentSummary: {
+      cash: cashTotal,
+      card: cardTotal,
+    },
+    units: allUnits.map((u) => ({
+      unitKey: u.unitKey,
+      id: u.id,
+      name: u.name,
+      price: u.price || 0,
+      isNoOnion: u.isNoOnion || false,
+      turkKahvesiSugar: u.turkKahvesiSugar || null,
+      cayStrength: u.cayStrength || null,
+      espressoShots: u.espressoShots || null,
+      milkOptions: u.milkOptions || null,
+    })),
+  };
+
+  // 6) Log state + backend sync
+  setLogs((prev) => {
+    const updated = [logEntry, ...prev];
+    syncLogsToServer(updated);
+    return updated;
+  });
+
+  // 7) Orders’tan bu masayı sil + backend sync
+  setOrders((prevOrders) => {
+    const updatedOrders = prevOrders.filter(
+      (o) => String(o.tableId) !== String(tableKey)
+    );
+    syncOrdersToServer(updatedOrders);
+    return updatedOrders;
+  });
+
+  // 8) Kasiyer seçimini temizle
+  const tableUnitKeys = allUnits.map((u) => u.unitKey);
+  setSelectedCashierItems((prev) =>
+    prev.filter((k) => !tableUnitKeys.includes(k))
   );
 }
-
 
 
   //------------------------------
@@ -781,14 +891,41 @@ function closeTable(tableKey) {
 }
 
 function handleProductPress(item) {
-  const needsCustomization = ['kofte-ekmek', 'hamburger', 'patso', 'karisik-tost', 'waffle', 'turk-kahvesi', 'cappuccino', 'latte', 'filter-coffee', 'nescafe', 'espresso', 'cay']
-    .includes(item.id);
+  if (!item) {
+    console.log('handleProductPress: item is null/undefined');
+    return;
+  }
+
+  // 🥪 Yemek + sos / soğan modali açılacak ürünler
+  const foodWithExtrasIds = [
+    'kofte-ekmek',
+    'hamburger',
+    'patso',
+    'karisik-tost',
+    'waffle',
+  ];
+  const needsFoodExtras = foodWithExtrasIds.includes(item.id);
   const needsOnion = item.id === 'kofte-ekmek';
 
-  if (needsCustomization || needsOnion) {
+  // ☕ Sıcak içeceklerden modali olanlar
+  const hotDrinkWithOptionsIds = [
+    'turk-kahvesi',   // şekerli / orta / şekersiz
+    'cay',            // açık / normal / demli
+    'espresso',       // single / double
+    'cappuccino',     // sütlü / sütsüz
+    'latte',          // sütlü / sütsüz
+    'filter-coffee',  // sütlü / sütsüz
+    'nescafe',        // sütlü / sütsüz
+  ];
+  const needsHotDrinkOptions = hotDrinkWithOptionsIds.includes(item.id);
+
+  const needsModal = needsFoodExtras || needsOnion || needsHotDrinkOptions;
+
+  if (needsModal) {
     setCustomProduct(item);
     setQuantity(1);
 
+    // Köfte için default soğan
     if (needsOnion) {
       setOnionYes(1);
       setOnionNo(0);
@@ -797,20 +934,29 @@ function handleProductPress(item) {
       setOnionNo(0);
     }
 
-        // 🔥 Her yeni üründe süt bilgisini sıfırla
-    setMilkOptions({ sutlu: false });
+    // Soğuk içecek seçimleri (kofte/hamburger/patso/waffle için)
+    setDrinkCounts({
+      coke: 0,
+      fanta: 0,
+      ayran: 0,
+      su: 0,
+      soda: 0,
+      limonluSoda: 0,
+    });
 
-    // 🔥 Çay için default
-    if (item.id === 'cay') {
-      setCayStrength('normal');
-    }
-
-    // Kahve vb. başka şeyler de varsa burada ayarlanabilir
-
+    // Soslar
     setSauces({ ketcap: false, mayonez: false, aci: false });
+
+    // Sıcak içecek default ayarları
+    setTurkKahvesiSugar('medium'); // Türk kahvesi: orta
+    setCayStrength('normal');      // Çay: normal
+    setEspressoShots('single');    // Espresso: single
+    setMilkOptions({ sutlu: false }); // sütlü kahveler: sütsüz başlasın
+
     setNoteText('');
     setCustomModalVisible(true);
   } else {
+    // Hiçbir özel ayarı olmayan ürünler direkt sepete
     addItemToBasket(item);
   }
 }
@@ -1272,51 +1418,86 @@ function managerChangeItemQuantity(orderId, itemIndex, delta) {
   }
 
   // ---- ACTIONS: CASHIER → PAID ----
-  function paySelectedItemsForTable(tableKey) {
-    updateOrders((currentOrders) => {
-      const selectedForTable = selectedCashierItems.filter((k) =>
-        k.endsWith(`|${tableKey}`)
-      );
-      if (selectedForTable.length === 0) return currentOrders;
 
-      const updated = currentOrders.map((order) => {
-        const orderSelected = selectedForTable.filter((k) =>
-          k.startsWith(order.id + '|')
-        );
-        if (orderSelected.length === 0) return order;
+function paySelectedItemsForTable(tableKey, method) {
+  const payMethod = method === 'CARD' ? 'CARD' : 'CASH'; // default CASH
 
-        const newItems = order.items.map((it, itemIndex) => {
-          const itemKeys = orderSelected.filter((k) => {
-            const parts = k.split('|');
-            return parts[1] === String(itemIndex);
-          });
+  updateOrders((currentOrders) => {
+    // 1) Bu masaya ait seçili unitKey'leri, item bazında grupla
+    const toPayMap = {}; // mapKey = `${orderId}|${itemIndex}` -> kaç unit seçili
 
-          if (itemKeys.length === 0) return it;
+    selectedCashierItems.forEach((unitKey) => {
+      const [orderId, itemIndexStr, unitIndexStr, unitTableKey] =
+        unitKey.split('|');
 
-          const qty = it.quantity || 0;
-          const currentPaid = it.paidCount || 0;
-          const add = itemKeys.length;
-          const newPaid = Math.min(qty, currentPaid + add);
+      // Farklı masaya aitse ignore et
+      if (unitTableKey !== String(tableKey)) return;
 
-          return {
-            ...it,
-            paidCount: newPaid,
-          };
-        });
-
-        return {
-          ...order,
-          items: newItems,
-        };
-      });
-
-      return updated;
+      const itemIndex = parseInt(itemIndexStr, 10);
+      const mapKey = `${orderId}|${itemIndex}`;
+      toPayMap[mapKey] = (toPayMap[mapKey] || 0) + 1;
     });
 
-    setSelectedCashierItems((prev) =>
-      prev.filter((k) => !k.endsWith(`|${tableKey}`))
-    );
-  }
+    // Bu masadan seçili hiç unit yoksa dokunma
+    if (Object.keys(toPayMap).length === 0) return currentOrders;
+
+    const updated = currentOrders.map((order) => {
+      // Sadece ilgili masadaki order'larla ilgilen
+      if (String(order.tableId) !== String(tableKey)) {
+        return order;
+      }
+
+      let changed = false;
+
+      const newItems = order.items.map((item, idx) => {
+        const mapKey = `${order.id}|${idx}`;
+        const addCount = toPayMap[mapKey] || 0;
+        if (!addCount) return item;
+
+        const totalQty = item.quantity || 0;
+        const prevPaid = item.paidCount || 0;
+        const unpaidQty = totalQty - prevPaid;
+
+        if (unpaidQty <= 0) return item;
+
+        // Bu sefer ödenecek adet (seçili sayısı ile unpaid sayısı arasında min)
+        const payNow = Math.min(addCount, unpaidQty);
+
+        const paidCashCount = item.paidCashCount || 0;
+        const paidCardCount = item.paidCardCount || 0;
+
+        changed = true;
+
+        if (payMethod === 'CASH') {
+          return {
+            ...item,
+            paidCount: prevPaid + payNow,
+            paidCashCount: paidCashCount + payNow,
+          };
+        } else {
+          return {
+            ...item,
+            paidCount: prevPaid + payNow,
+            paidCardCount: paidCardCount + payNow,
+          };
+        }
+      });
+
+      return changed ? { ...order, items: newItems } : order;
+    });
+
+    return updated;
+  });
+
+  // 2) Bu masaya ait seçili unitKey'leri temizle
+  setSelectedCashierItems((prev) =>
+    prev.filter((unitKey) => {
+      const parts = unitKey.split('|');
+      const unitTableKey = parts[3];
+      return unitTableKey !== String(tableKey);
+    })
+  );
+}
 
 
 function formatOrderText(order) {
@@ -1418,56 +1599,7 @@ function toggleWaiterItemSelection(unitKey) {
   );
 }
 
-function paySelectedItemsForTable(tableKey) {
-  updateOrders((currentOrders) => {
-    const toPayMap = {};
 
-    selectedCashierItems.forEach((unitKey) => {
-      const [orderId, itemIndexStr, unitIndexStr, unitTableKey] =
-        unitKey.split('|');
-      if (unitTableKey !== String(tableKey)) return;
-      const itemIndex = parseInt(itemIndexStr, 10);
-      const mapKey = `${orderId}|${itemIndex}`;
-      toPayMap[mapKey] = (toPayMap[mapKey] || 0) + 1;
-    });
-
-    if (Object.keys(toPayMap).length === 0) return currentOrders;
-
-    const updated = currentOrders.map((order) => {
-      let changed = false;
-
-      const newItems = order.items.map((item, idx) => {
-        const mapKey = `${order.id}|${idx}`;
-        const addCount = toPayMap[mapKey] || 0;
-        if (!addCount) return item;
-
-        const prevPaid = item.paidCount || 0;
-        const totalQty = item.quantity || 0;
-        const newPaid = Math.min(prevPaid + addCount, totalQty);
-
-        if (newPaid !== prevPaid) {
-          changed = true;
-          return { ...item, paidCount: newPaid };
-        }
-        return item;
-      });
-
-      if (!changed) return order;
-      return { ...order, items: newItems };
-    });
-
-    return updated;
-  });
-
-  // bu masaya ait seçili satırları temizle
-  setSelectedCashierItems((prev) =>
-    prev.filter((unitKey) => {
-      const parts = unitKey.split('|');
-      const unitTableKey = parts[3];
-      return unitTableKey !== String(tableKey);
-    })
-  );
-}
 
 function serveSelectedItemsForTable(tableKey) {
   updateOrders((currentOrders) => {
@@ -1676,66 +1808,77 @@ const tablesForCashier = Object.entries(
 
 
       {/* ALTTA: ÜRÜN GRID */}
-      <View style={styles.menuGridContainer}>
-        <Text style={styles.gridTitle}>
-          {CATEGORIES.find((c) => c.id === selectedCategory)?.label ||
-            'Ürünler'}
-        </Text>
+{/* ALTTA: ÜRÜN GRID */}
+<View style={styles.menuGridContainer}>
+  <Text style={styles.gridTitle}>
+    {CATEGORIES.find((c) => c.id === selectedCategory)?.label ||
+      'Ürünler'}
+  </Text>
 
-        <FlatList
-          data={filteredMenuItems}
-          keyExtractor={(item) => item.id}
-          numColumns={2}
-          contentContainerStyle={styles.menuList}
-          renderItem={({ item }) => {
-            const countInBasket = getBasketCountById(item.id);
-            const isDrink = item.category === 'DRINK' && !item.isHot; 
+  <FlatList
+    data={filteredMenuItems}
+    keyExtractor={(item, index) => item?.id ?? String(index)} // ✅ null safe
+    numColumns={2}
+    contentContainerStyle={styles.menuList}
+    renderItem={({ item }) => {
+      if (!item) {
+        console.log('renderItem: item is null');
+        return null;
+      }
 
-            return (
-              <View style={styles.productCardWrapper}>
+      const countInBasket = getBasketCountById(item.id);
+      const isDrink = item.category === 'DRINK' && !item.isHot;
+
+      const imageSource = PRODUCT_IMAGES[item.id]; // undefined olabilir, sorun değil
+
+      return (
+        <View style={styles.productCardWrapper}>
+          <Pressable
+            style={styles.productCard}
+            onPress={() => handleProductPress(item)}
+          >
+            {imageSource && ( // ✅ sadece varsa göster
+              <Image
+                source={imageSource}
+                style={styles.productImage}
+                resizeMode="cover"
+              />
+            )}
+
+            <Text style={styles.productName}>{item.name}</Text>
+            <Text style={styles.productPrice}>
+              TL {item.price.toFixed(2)}
+            </Text>
+
+            {/* DRINK ise altına - sayı + counter koy */}
+            {isDrink && (
+              <View style={styles.drinkInlineCounter}>
                 <Pressable
-                  style={styles.productCard}
+                  style={styles.qtyButton}
+                  onPress={() =>
+                    decrementItemInBasketById(item.id)
+                  }
+                >
+                  <Text style={styles.qtyButtonText}>-</Text>
+                </Pressable>
+
+                <Text style={styles.qtyText}>{countInBasket}</Text>
+
+                <Pressable
+                  style={styles.qtyButton}
                   onPress={() => handleProductPress(item)}
                 >
-                  <Image
-                    source={PRODUCT_IMAGES[item.id]}
-                    style={styles.productImage}
-                    resizeMode="cover"
-                  />
-
-                  <Text style={styles.productName}>{item.name}</Text>
-                  <Text style={styles.productPrice}>
-                    TL {item.price.toFixed(2)}
-                  </Text>
-
-                  {/* DRINK ise altına - sayı + counter koy */}
-                  {isDrink && (
-                    <View style={styles.drinkInlineCounter}>
-                      <Pressable
-                        style={styles.qtyButton}
-                        onPress={() =>
-                          decrementItemInBasketById(item.id)
-                        }
-                      >
-                        <Text style={styles.qtyButtonText}>-</Text>
-                      </Pressable>
-
-                      <Text style={styles.qtyText}>{countInBasket}</Text>
-
-                      <Pressable
-                        style={styles.qtyButton}
-                        onPress={() => handleProductPress(item)}
-                      >
-                        <Text style={styles.qtyButtonText}>+</Text>
-                      </Pressable>
-                    </View>
-                  )}
+                  <Text style={styles.qtyButtonText}>+</Text>
                 </Pressable>
               </View>
-            );
-          }}
-        />
-      </View>
+            )}
+          </Pressable>
+        </View>
+      );
+    }}
+  />
+</View>
+
     </View>
 
     {/* CUSTOMIZATION MODAL */}
@@ -3218,7 +3361,7 @@ if (
                 )}
 
                 {/* Pay */}
-           <View style={styles.cashierPayRow}>
+<View style={styles.cashierPayRow}>
   <View>
     <Text style={styles.cashierSummaryText}>
       Selected: TL {selectedAmount.toFixed(2)}
@@ -3230,11 +3373,17 @@ if (
     )}
   </View>
 
-  <View style={{ flexDirection: 'row', gap: 8 }}>
+  <View style={{ flexDirection: 'row', gap: 6 }}>
     <Button
-      title="Pay"
+      title="Pay Cash"
       color={selectedAmount > 0 ? '#27ae60' : '#aaa'}
-      onPress={() => paySelectedItemsForTable(tableKey)}
+      onPress={() => paySelectedItemsForTable(tableKey, 'CASH')}
+      disabled={selectedAmount === 0}
+    />
+    <Button
+      title="Pay Card"
+      color={selectedAmount > 0 ? '#2980b9' : '#aaa'}
+      onPress={() => paySelectedItemsForTable(tableKey, 'CARD')}
       disabled={selectedAmount === 0}
     />
     <Button
@@ -3245,6 +3394,7 @@ if (
     />
   </View>
 </View>
+
 
               </>
             )}
@@ -3329,19 +3479,32 @@ if (
       </Text>
     ) : (
       <>
-        {/* Özet kartı */}
-        <View style={styles.cashierTableCard}>
-          <Text style={styles.cashierTableTitle}>Özet</Text>
-          <Text style={styles.cashierSummaryText}>
-            Ciro: TL {bossTotalTurnover.toFixed(2)}
-          </Text>
-          <Text style={styles.cashierSummaryText}>
-            Toplam Ürün: {bossTotalItems}
-          </Text>
-          <Text style={styles.cashierSummaryText}>
-            Yemek: {bossFoodCount} | İçecek: {bossDrinkCount}
-          </Text>
-        </View>
+      {/* Özet kartı */}
+
+<View style={styles.cashierTableCard}>
+  <Text style={styles.cashierTableTitle}>Özet</Text>
+
+  <Text style={styles.cashierSummaryText}>
+    Ciro: TL {bossTotalTurnover.toFixed(2)}
+  </Text>
+
+  <Text style={styles.cashierSummaryText}>
+    Nakit: TL {bossTotalCash.toFixed(2)}
+  </Text>
+
+  <Text style={styles.cashierSummaryText}>
+    Kredi Kartı: TL {bossTotalCard.toFixed(2)}
+  </Text>
+
+  <Text style={styles.cashierSummaryText}>
+    Toplam Ürün: {bossTotalItems}
+  </Text>
+
+  <Text style={styles.cashierSummaryText}>
+    Yemek: {bossFoodCount} | İçecek: {bossDrinkCount}
+  </Text>
+</View>
+
 
         {/* Ürün bazlı liste */}
         <FlatList
