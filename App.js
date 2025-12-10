@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, memo } from 'react';
+
+
 import {
   View,
   StyleSheet,
@@ -12,10 +14,13 @@ import {
   ScrollView,
   Platform,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import GoalItem from './components/GoalItem';
 
 const TABLES = [1, 2, 3, 4, 5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,"Paket1","Paket2",];
+
+
 
 const MENU_ITEMS = [
   // MEAT
@@ -77,6 +82,17 @@ const CATEGORIES = [
   { id: 'DRINK', label: 'Soğuk İçecekler' }, // 🆕
    { id: 'HOT_DRINK', label: 'Sıcak İçecekler' },  // 👈 yeni
 ];
+
+// PASS MODE: hangi sırada dönecek
+const PASS_VIEWS = ['POPULAR', 'HOT_DRINK', 'TOAST',"DESSERT"];
+
+function getPassViewLabel(view) {
+  if (view === 'POPULAR') return 'Popüler Ürünler';
+  if (view === 'HOT_DRINK') return 'Sıcak İçecekler';
+  if (view === 'TOAST') return 'Tost Seçenekleri';
+  if (view === 'DESSERT') return 'Tatlılar';   // 👈 EKLEDİK
+  return '';
+}
 
 
 const PRODUCT_IMAGES = {
@@ -206,7 +222,7 @@ export default function App() {
     const [orders, setOrders] = useState([]);// BU KALACAK orders, setOrders 
     const [selectedTable, setSelectedTable] = useState(null);
     const APP_LOGO = require('./assets/kebelioglu-logo2.png');
-
+    const [mode, setMode] = useState('ORDER'); // ORDER | KITCHEN | WAITER | CASHIER
 
   // 👇 Server’a da push eden wrapper
   function updateOrders(updater) {
@@ -218,20 +234,15 @@ export default function App() {
     });
   }
 
-
-
-
-  const [mode, setMode] = useState('ORDER'); // ORDER | KITCHEN | WAITER | CASHIER
-
   const [selectedCashierItems, setSelectedCashierItems] = useState([]);
   const [selectedWaiterItems, setSelectedWaiterItems] = useState([]);
   const [selectedKitchenItems, setSelectedKitchenItems] = useState([]);
   const [selectedBaristaItems, setSelectedBaristaItems] = useState([]); // 👈 YENİ
   const [expandedTables, setExpandedTables] = useState({});
-const [categoriesExpanded, setCategoriesExpanded] = useState(true);
-const [logs, setLogs] = useState([]);
-const [expandedLogs, setExpandedLogs] = useState({});
-
+  const [categoriesExpanded, setCategoriesExpanded] = useState(true);
+  const [logs, setLogs] = useState([]);
+  const [expandedLogs, setExpandedLogs] = useState({});
+  const [passViewIndex, setPassViewIndex] = useState(0);
 
 
   const [cayStrength, setCayStrength] = useState('normal'); 
@@ -285,6 +296,44 @@ const [drinkCounts, setDrinkCounts] = useState({
   const [validationMessage, setValidationMessage] = useState('');
 
   const [noteText, setNoteText] = useState('');
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setPassViewIndex((prev) => (prev + 1) % PASS_VIEWS.length);
+    }, 5000); // 10 saniyede bir değiş
+
+    return () => clearInterval(intervalId);
+  }, []);
+
+  const currentPassView = PASS_VIEWS[passViewIndex];
+
+  const passItems = useMemo(() => {
+    return MENU_ITEMS.filter((item) => {
+      if (currentPassView === 'POPULAR') {
+        return POPULAR_IDS.includes(item.id);
+      }
+
+      if (currentPassView === 'HOT_DRINK') {
+        return item.category === 'DRINK' && item.isHot;
+      }
+
+      if (currentPassView === 'TOAST') {
+        return item.category === 'TOAST';
+      }
+
+       // 👇 BURAYA TATLILAR
+    if (currentPassView === 'DESSERT') {
+      return item.category === 'DESSERT';
+    }
+
+      return false;
+    });
+  }, [currentPassView]);
+
+   const { width: screenWidth } = useWindowDimensions();
+  const passCardWidth = screenWidth > 900 ? 260 : '48%';
+  // >900px ise ~tablet/web: 260px kartlar, bir sürü yan yana
+  // küçük ekranda: %48 → 2 kolon/1 kolon hali devam
 
     // Uygulama açılınca server’dan orders çek + 2 saniyede bir yenile
   // Uygulama açılınca server’dan orders çek + 2 saniyede bir yenile
@@ -1684,6 +1733,7 @@ const tablesForCashier = Object.entries(
 
 
       {/* Mode switcher */}
+      {mode !== 'PASS' && (
 <View style={styles.modeSwitchContainer}>
   <Button
     title="Order"
@@ -1710,6 +1760,12 @@ const tablesForCashier = Object.entries(
     color={mode === 'CASHIER' ? '#0acc2aff' : '#888'}
     onPress={() => setMode('CASHIER')}
   />
+<Button
+  title="PASS"
+  color={mode === 'PASS' ? '#0acc2aff' : '#888'}
+  onPress={() => setMode('PASS')}
+/>
+
     <Button
   title="Logs"
   color={mode === 'LOG' ? '#0acc2aff' : '#888'}
@@ -1729,7 +1785,7 @@ const tablesForCashier = Object.entries(
   />
 
 </View>
-
+)}
 
 {mode === 'ORDER' && (
   <View style={styles.waiterRoot}>
@@ -3523,6 +3579,50 @@ if (
   </View>
 )}
 
+{mode === 'PASS' && (
+  <View style={styles.passRoot}>
+    {/* Logo */}
+    <Pressable
+      style={styles.passLogoWrapper}
+      onPress={() => setMode('ORDER')}
+    >
+      <Image
+        source={require('./assets/placeholder-image.jpg')} // ya da APP_LOGO
+        style={styles.passLogo}
+        resizeMode="contain"
+      />
+    </Pressable>
+
+    {/* Başlık */}
+    <View style={styles.passHeaderRow}>
+      <Text style={styles.passTitle}>{getPassViewLabel(currentPassView)}</Text>
+      <Text style={styles.passSubtitle}>5 sn sonra otomatik değişir</Text>
+    </View>
+
+    {/* Ürün grid'i, scroll yok */}
+  <View style={styles.passGrid}>
+  {passItems.map((item) => (
+    <View
+      key={item.id}
+      style={[styles.passCard, { width: passCardWidth }]}   // 👈 FARK BURADA
+    >
+      {PRODUCT_IMAGES[item.id] && (
+        <Image
+          source={PRODUCT_IMAGES[item.id]}
+          style={styles.passItemImage}
+          resizeMode="cover"
+        />
+      )}
+      <Text style={styles.passItemName}>{item.name}</Text>
+      <Text style={styles.passItemPrice}>{item.price} TL</Text>
+    </View>
+  ))}
+</View>
+
+  </View>
+)}
+
+
 
 {mode === 'MANAGER' && (
   <View style={styles.cashierContainer}>
@@ -4714,5 +4814,129 @@ menuSelectorHeader: {
     color: '#fff',
   },
 
+  passRoot: {
+    flex: 1,
+    backgroundColor: '#000',
+    paddingTop: 16,
+    paddingHorizontal: 16,
+  },
+  passLogoWrapper: {
+    alignSelf: 'center',
+    marginBottom: 8,
+  },
+  passLogo: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+  },
+  passHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginBottom: 8,
+  },
+  passTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  passSubtitle: {
+    fontSize: 12,
+    color: '#aaa',
+  },
+  passGrid: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignContent: 'flex-start',
+  },
+  passCard: {
+    width: '48%',           // yan yana 2 kart
+    backgroundColor: '#222',
+    borderRadius: 12,
+    padding: 8,
+    marginBottom: 10,
+  },
+  passItemImage: {
+    width: '100%',
+    height: 80,
+    borderRadius: 8,
+    marginBottom: 6,
+  },
+  passItemName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  passItemPrice: {
+    fontSize: 14,
+    color: '#ffeb3b',
+  },
+passRoot: {
+    flex: 1,
+    backgroundColor: '#000',
+    paddingTop: 16,
+    paddingHorizontal: 16,
+  },
+  passLogoWrapper: {
+    alignSelf: 'center',
+    marginBottom: 8,
+  },
+  passLogo: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+  },
+  passHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginBottom: 8,
+  },
+  passTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  passSubtitle: {
+    fontSize: 12,
+    color: '#aaa',
+  },
+
+  // GRID
+  passGrid: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',      // 👈 geniş ekranda ortalasın
+    alignContent: 'flex-start',
+    gap: 10,                       // RN web destekliyorsa güzel; desteklemezse margin ile çözeriz
+  },
+
+  passCard: {
+    // width'i buradan SİLDİK, artık JS’den geliyor
+    backgroundColor: '#222',
+    borderRadius: 12,
+    padding: 8,
+    margin: 5,
+  },
+  passItemImage: {
+    width: '100%',
+    height: 120,                   // 👈 sabit yükseklik, artık tren gibi uzamayacak
+    borderRadius: 8,
+    marginBottom: 6,
+  },
+  passItemName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 2,
+  },
+  passItemPrice: {
+    fontSize: 14,
+    color: '#ffeb3b',
+  },
 
 });
