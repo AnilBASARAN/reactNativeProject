@@ -3581,6 +3581,7 @@ if (
 
 {mode === 'PASS' && (
   <View style={styles.passRoot}>
+     <View style={styles.passInner}>
     {/* Logo */}
     <Pressable
       style={styles.passLogoWrapper}
@@ -3618,7 +3619,7 @@ if (
     </View>
   ))}
 </View>
-
+</View>
   </View>
 )}
 
@@ -4877,18 +4878,15 @@ menuSelectorHeader: {
 passRoot: {
     flex: 1,
     backgroundColor: '#000',
-    paddingTop: 16,
+    paddingTop: -6,
     paddingHorizontal: 16,
+    paddingBottom: 16,  
   },
   passLogoWrapper: {
     alignSelf: 'center',
     marginBottom: 8,
   },
-  passLogo: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-  },
+
   passHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -4912,7 +4910,8 @@ passRoot: {
     flexWrap: 'wrap',
     justifyContent: 'center',      // 👈 geniş ekranda ortalasın
     alignContent: 'flex-start',
-    gap: 10,                       // RN web destekliyorsa güzel; desteklemezse margin ile çözeriz
+    gap: 20,   
+                     // RN web destekliyorsa güzel; desteklemezse margin ile çözeriz
   },
 
   passCard: {
@@ -4932,11 +4931,12 @@ passRoot: {
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
-    marginBottom: 2,
+    marginBottom: 22,
   },
   passItemPrice: {
     fontSize: 14,
     color: '#ffeb3b',
   },
+
 
 });
