@@ -305,6 +305,19 @@ const [drinkCounts, setDrinkCounts] = useState({
     return () => clearInterval(intervalId);
   }, []);
 
+  async function printTicketForOrder(order) {
+  try {
+    await fetch(`${API_URL}/print-ticket`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(order),
+    });
+  } catch (err) {
+    console.log('Error sending print ticket:', err);
+  }
+}
+
+
   const currentPassView = PASS_VIEWS[passViewIndex];
 
   const passItems = useMemo(() => {
@@ -571,65 +584,45 @@ const bossDrinkCount = bossProducts
   .reduce((s, p) => s + p.count, 0);
 
 
-function submitOrder() {
+async function submitOrder() {
   if (!selectedTable) {
     setValidationMessage('Önce masa seçmelisiniz.');
     setValidationModalVisible(true);
     return;
   }
+
   if (basket.length === 0) {
     setValidationMessage('Sepet boş, ürün ekleyin.');
     setValidationModalVisible(true);
     return;
   }
 
-const selectedItems = basket.map((item) => ({
-  id: item.id,
-  name: item.name,
-  price: item.price,
-  quantity: item.quantity,
-  onionYes: item.onionYes ?? 0,
-  onionNo: item.onionNo ?? 0,
-  drinks: item.drinks ?? { coke: 0, fanta: 0, ayran: 0, soda: 0, limonluSoda: 0, su: 0 },
-  sauces: item.sauces ?? {
-    ketcap: false,
-    mayonez: false,
-    aci: false,
-  },
-  turkKahvesiSugar: item.turkKahvesiSugar ?? null,
-  milkOptions: item.milkOptions ?? { sutlu: false },
-  cayStrength: item.cayStrength ?? null,
-  espressoShots: item.espressoShots ?? null,
-  paidCount: item.paidCount || 0,
-  paidCashCount: item.paidCashCount || 0,
-  paidCardCount: item.paidCardCount || 0,
-  servedCount: item.servedCount || 0,
-  note: item.note ?? '',
-}));
+  // 1) Yeni siparişi oluştur
+  const newOrder = {
+    id: Date.now().toString(),
+    table: selectedTable,
+    items: basket.map((it) => ({
+      id: it.id,
+      name: it.name,
+      quantity: it.quantity || 1,
+      note: it.note || '',
+    })),
+    note: noteText || '',
+    createdAt: new Date().toISOString(),
+  };
 
+  // 2) Frontend + Backend’e gönder
+  updateOrders((currentOrders) => [...currentOrders, newOrder]);
 
-  const orderNote = basket
-    .map((item) => item.note)
-    .filter(Boolean)
-    .join(' | ');
+  // 3) MUTFAK FİŞİNİ YAZDIR
+  printTicketForOrder(newOrder);   // 👈  işte burada!
 
-  updateOrders((currentOrders) => [
-    ...currentOrders,
-    {
-      id: Math.random().toString(),
-      tableId: selectedTable,
-      items: selectedItems,
-      status: 'PENDING',
-      note: orderNote,
-      paid: false,
-    },
-  ]);
-
-  // 🧹 sepeti boşalt
+  // 4) Sepeti temizle, modal kapat
   clearBasket();
-
-  // 🧨 cart modal açıksa kapat
+  setNoteText('');
   setCartModalVisible(false);
+
+  console.log("Sipariş gönderildi ve fiş yazdırıldı:", newOrder);
 }
 
 
