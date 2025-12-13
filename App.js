@@ -309,15 +309,26 @@ const [drinkCounts, setDrinkCounts] = useState({
     return () => clearInterval(intervalId);
   }, []);
 
-  async function printTicketForOrder(order) {
+async function printTicketForOrder(order) {
   try {
-    await fetch(`${API_URL}/print-ticket`, {
+    const res = await fetch(`${SERVER_URL}/print-ticket`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(order),
+      body: JSON.stringify({ order }),
     });
-  } catch (err) {
-    console.log('Error sending print ticket:', err);
+
+    const json = await res.json();
+    if (!res.ok || !json?.ok) {
+      console.log('Print failed:', json);
+      // İstersen kullanıcıya alert bas
+      // Alert.alert('Yazdırma Hatası', json?.error || 'Print failed');
+      return false;
+    }
+
+    return true;
+  } catch (e) {
+    console.log('Print exception:', e);
+    return false;
   }
 }
 
