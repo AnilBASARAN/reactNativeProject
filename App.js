@@ -177,15 +177,19 @@ async function fetchOrdersFromServer() {
 
 async function syncOrdersToServer(newOrders) {
   try {
-    await fetch(`${API_URL}/orders`, {
+    const res = await fetch(`${API_URL}/orders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newOrders),
     });
+
+    const text = await res.text();
+    console.log('syncOrdersToServer:', res.status, text);
   } catch (err) {
     console.log('Error syncing orders to server:', err);
   }
 }
+
 
 async function fetchLogsFromServer() {
   try {
@@ -598,18 +602,40 @@ async function submitOrder() {
   }
 
   // 1) Yeni siparişi oluştur
-  const newOrder = {
-    id: Date.now().toString(),
-    table: selectedTable,
-    items: basket.map((it) => ({
-      id: it.id,
-      name: it.name,
-      quantity: it.quantity || 1,
-      note: it.note || '',
-    })),
-    note: noteText || '',
-    createdAt: new Date().toISOString(),
-  };
+const newOrder = {
+  id: Date.now().toString(),
+  tableId: selectedTable,          // ✅ CRITICAL (your grouping uses this)
+  table: selectedTable,            // optional
+  status: 'PENDING',
+  items: basket.map((it) => ({
+    id: it.id,
+    name: it.name,
+    price: it.price,               // ✅ required for cashier totals
+    quantity: it.quantity || 1,
+    note: it.note || '',
+
+    // ✅ status counters your unit builder reads
+    readyCount: it.readyCount || 0,
+    servedCount: it.servedCount || 0,
+    paidCount: it.paidCount || 0,
+    paidCashCount: it.paidCashCount || 0,
+    paidCardCount: it.paidCardCount || 0,
+
+    // ✅ extras your label formatters read
+    onionYes: it.onionYes || 0,
+    onionNo: it.onionNo || 0,
+    sauces: it.sauces || { ketcap: false, mayonez: false, aci: false },
+    turkKahvesiSugar: it.turkKahvesiSugar ?? null,
+    milkOptions: it.milkOptions ?? { sutlu: false },
+    cayStrength: it.cayStrength ?? null,
+    espressoShots: it.espressoShots ?? null,
+  })),
+  note: noteText || '',
+  createdAt: new Date().toISOString(),
+};
+
+
+console.log('SUBMIT ORDER tableId=', selectedTable, 'basket=', basket.length);
 
   // 2) Frontend + Backend’e gönder
   updateOrders((currentOrders) => [...currentOrders, newOrder]);
@@ -756,7 +782,8 @@ function buildUnitsForTable(tableKey, tableOrders) {
           unitIndex,
           id: it.id,
           name: it.name,
-          price: it.price,
+          price: Number.isFinite(it.price) ? it.price : (MENU_ITEMS.find(m => m.id === it.id)?.price || 0),
+
           note: it.note,
 
           isDrink,
@@ -1698,7 +1725,7 @@ function serveSelectedItemsForTable(tableKey) {
 
 const tablesForCashier = Object.entries(
   orders.reduce((acc, order) => {
-    const key = String(order.tableId ?? 'Unknown');
+    const key = String(order.tableId ?? order.table ?? 'Unknown'); // ✅
     if (!acc[key]) acc[key] = [];
     acc[key].push(order);
     return acc;
@@ -3207,7 +3234,8 @@ if (
         const unpaidUnits = allUnits.filter((u) => !u.isPaid);
         const paidUnits = allUnits.filter((u) => u.isPaid);
 
-        const totalAmount = allUnits.reduce((s, u) => s + u.price, 0);
+        const totalAmount = allUnits.reduce((s, u) => s + (u.price || 0), 0);
+
         const paidAmount = paidUnits.reduce((s, u) => s + u.price, 0);
         const unpaidAmount = unpaidUnits.reduce((s, u) => s + u.price, 0);
 
