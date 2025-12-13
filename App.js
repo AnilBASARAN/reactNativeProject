@@ -309,25 +309,34 @@ const [drinkCounts, setDrinkCounts] = useState({
     return () => clearInterval(intervalId);
   }, []);
 
-async function printTicketForOrder(order) {
+  async function printTicketForOrder(order) {
   try {
+    // Sen projede zaten server URL kullanıyorsun.
+    // Yoksa şunu ayarla:
+     const SERVER_URL = 'http://192.168.0.13:3000';
+
     const res = await fetch(`${SERVER_URL}/print-ticket`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ order }),
     });
 
-    const json = await res.json();
-    if (!res.ok || !json?.ok) {
-      console.log('Print failed:', json);
-      // İstersen kullanıcıya alert bas
-      // Alert.alert('Yazdırma Hatası', json?.error || 'Print failed');
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || data?.ok === false) {
+      console.log('PRINT FAILED:', data);
+      // İstersen kullanıcıya modal göster:
+      // setValidationMessage(`Yazdırma hatası: ${data?.error || res.status}`);
+      // setValidationModalVisible(true);
       return false;
     }
 
+    console.log('PRINT OK ✅', data);
     return true;
-  } catch (e) {
-    console.log('Print exception:', e);
+  } catch (err) {
+    console.log('PRINT ERROR ❌', err);
+    // setValidationMessage(`Yazdırma hatası: ${String(err?.message || err)}`);
+    // setValidationModalVisible(true);
     return false;
   }
 }
