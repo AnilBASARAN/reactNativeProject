@@ -171,7 +171,7 @@ const ONION_IMAGE = require('./assets/onion.jpg');
 const NO_ONION_IMAGE = require('./assets/no-onion.jpg');
 
 // --- BACKEND CONFIG ---
-const API_URL = 'http://192.168.0.13:3000'; // ← BURAYI kendi IP adresinle değiştir
+const API_URL = 'http://192.168.1.9:3000'; // ← BURAYI kendi IP adresinle değiştir
 
 async function fetchOrdersFromServer() {
   try {
