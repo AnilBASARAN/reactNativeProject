@@ -39,12 +39,17 @@ const MENU_ITEMS = [
 
   // DESSERTS
   { id: 'waffle', name: 'Waffle', price: 150, category: 'DESSERT' },
-  { id: 'cheesecake', name: 'Cheesecake', price: 200, category: 'DESSERT' },
+  { id: 'profiterol', name: 'Profiterol', price: 150, category: 'DESSERT' },
+  { id: 'cileklicheesecake', name: 'Çilekli cheesecake', price: 200, category: 'DESSERT' },
+   { id: 'limonlucheesecake', name: 'Limonlu Cheesecake', price: 200, category: 'DESSERT' },
   { id: 'tiramisu', name: 'Tiramisu', price: 150, category: 'DESSERT' },
   { id: 'trilece', name: 'Trileçe', price: 150, category: 'DESSERT' },
 
   // DRINK - SOĞUK
-{ id: 'coke', name: 'Coca Cola', price: 70, category: 'DRINK', isHot: false },
+{ id: 'pepsi', name: 'Pepsi', price: 70, category: 'DRINK', isHot: false },
+{ id: 'sevenup', name: 'SevenUp', price: 70, category: 'DRINK', isHot: false },
+{ id: 'yedigun', name: 'Yedigün', price: 70, category: 'DRINK', isHot: false },
+{ id: 'pepsiZero', name: 'Pepsi Zero', price: 70, category: 'DRINK', isHot: false },
 { id: 'fanta', name: 'Fanta', price: 70, category: 'DRINK', isHot: false },
 { id: 'ayran', name: 'Ayran', price: 50, category: 'DRINK', isHot: false },
 { id: 'su', name: 'Su', price: 20, category: 'DRINK', isHot: false },
@@ -71,6 +76,7 @@ const POPULAR_IDS = [
   'hamburger',
   'karisik-tost',
   'patso',
+  "patates"
   
 ];
 
@@ -106,14 +112,18 @@ const PRODUCT_IMAGES = {
 
   patso: require('./assets/patso.jpg'),
   patates: require('./assets/patates.jpg'),
-
+  profiterol: require('./assets/profiterol.jpg'),
   waffle: require('./assets/waffle.jpg'),
-  cheesecake: require('./assets/cheesecake.jpg'),
+  cileklicheesecake: require('./assets/cileklicheese-cake.jpg'),
+  limonlucheesecake: require('./assets/limonlu-cheesecake.jpg'),
   tiramisu: require('./assets/tiramisu.jpg'),
   trilece: require('./assets/trilece.jpg'),
 
   // 🧊 Soğuk içecekler
-  coke: require('./assets/drink-coke.jpg'),
+  pepsi: require('./assets/pepsi.jpg'),
+  sevenup: require('./assets/sevenup.jpg'),
+  pepsiZero: require('./assets/pepsi-zero.jpg'),
+  yedigun: require('./assets/yedigun.jpg'),
   fanta: require('./assets/drink-fanta.jpg'),
   ayran: require('./assets/drink-ayran.jpg'),
   su: require('./assets/su.jpg'),
@@ -132,7 +142,10 @@ espresso: require('./assets/espresso.jpg'),
 
 
 const DRINK_OPTIONS = [
-  { id: 'coke', label: 'Coca Cola', image: require('./assets/drink-coke.jpg') },
+  { id: 'pepsi', label: 'Pepsi', image: require('./assets/pepsi.jpg') },
+  { id: 'sevenup', label: 'SevenUp', image: require('./assets/sevenup.jpg') },
+  { id: 'yedigun', label: 'Yedigün', image: require('./assets/yedigun.jpg') },
+  { id: 'pepsiZero', label: 'Pepsi Zero', image: require('./assets/pepsi-zero.jpg') },
   { id: 'fanta', label: 'Fanta', image: require('./assets/drink-fanta.jpg') },
   { id: 'ayran', label: 'Ayran', image: require('./assets/drink-ayran.jpg') },
   { id: 'su', label: 'Su', image: require('./assets/su.jpg') },
@@ -280,13 +293,15 @@ const [cartModalVisible, setCartModalVisible] = useState(false);
   const [quantity, setQuantity] = useState(1);
 
 const [drinkCounts, setDrinkCounts] = useState({
-  coke: 0,
+  pepsi: 0,
+  sevenup:0,
+  yedigun:0,
   fanta: 0,
   ayran: 0,
   su:0,
   soda:0,
   limonluSoda:0,
-
+  pepsiZero:0,
 });
 
 
@@ -990,6 +1005,7 @@ function handleProductPress(item) {
     'kofte-ekmek',
     'hamburger',
     'patso',
+    'patates',
     'karisik-tost',
     'waffle',
   ];
@@ -1025,7 +1041,10 @@ function handleProductPress(item) {
 
     // Soğuk içecek seçimleri (kofte/hamburger/patso/waffle için)
     setDrinkCounts({
-      coke: 0,
+      pepsi: 0,
+      pepsiZero:0,
+      sevenup:0,
+      yedigun:0,
       fanta: 0,
       ayran: 0,
       su: 0,
