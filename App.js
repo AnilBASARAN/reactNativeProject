@@ -63,6 +63,7 @@ const MENU_ITEMS = [
 { id: 'filter-coffee', name: 'Filtre Kahve', price: 150, category: 'DRINK', isHot: true },
 { id: 'nescafe', name: 'Nescafe', price: 100, category: 'DRINK', isHot: true },
 { id: 'cay', name: 'Çay', price: 50, category: 'DRINK', isHot: true },
+{ id: 'americano', name: 'Americano', price: 150, category: 'DRINK', isHot: true },
 { id: 'espresso', name: 'Espresso', price: 150, category: 'DRINK', isHot: true },
 ];
 
@@ -138,6 +139,7 @@ const PRODUCT_IMAGES = {
   nescafe: require('./assets/nescafe.jpg'),
   cay: require('./assets/cay.jpg'),
 espresso: require('./assets/espresso.jpg'),
+americano: require('./assets/americano.jpg'),
 };
 
 
@@ -1021,6 +1023,7 @@ function handleProductPress(item) {
     'latte',          // sütlü / sütsüz
     'filter-coffee',  // sütlü / sütsüz
     'nescafe',        // sütlü / sütsüz
+    "americano",
   ];
   const needsHotDrinkOptions = hotDrinkWithOptionsIds.includes(item.id);
 
@@ -2277,7 +2280,7 @@ const tablesForCashier = Object.entries(
 )}
 
 {/* KAHVELER İÇİN SÜT */}
-{['cappuccino', 'latte', 'filter-coffee', 'nescafe'].includes(customProduct.id) && (
+{['cappuccino', 'latte', 'filter-coffee', 'nescafe',"americano"].includes(customProduct.id) && (
   <>
     <Text style={styles.optionTitle}>Süt Tercihi</Text>
     <View style={styles.sauceRowContainer}>
@@ -2396,7 +2399,7 @@ const tablesForCashier = Object.entries(
               if (item.turkKahvesiSugar === 'sweet') extras.push('Şekerli');
             }
 
-            const milkEligibleIds = ['cappuccino', 'latte', 'filter-coffee', 'nescafe'];
+            const milkEligibleIds = ['cappuccino', 'latte', 'filter-coffee', 'nescafe',"americano"];
             if (
               milkEligibleIds.includes(item.id) &&
               item.milkOptions &&
@@ -2808,7 +2811,7 @@ const formatBaristaLabel = (unit) => {
   }
 
 // Sütlü kahveler (çay ve espresso hariç)
-const milkEligibleIds = ['cappuccino', 'latte', 'filter-coffee', 'nescafe'];
+const milkEligibleIds = ['cappuccino', 'latte', 'filter-coffee', 'nescafe',"americano"];
 if (
   milkEligibleIds.includes(unit.id) &&
   unit.milkOptions &&
@@ -3059,7 +3062,7 @@ if (
 
   // Sütlü kahveler
 // Sütlü kahveler (çay ve espresso hariç)
-const milkEligibleIds = ['cappuccino', 'latte', 'filter-coffee', 'nescafe'];
+const milkEligibleIds = ['cappuccino', 'latte', 'filter-coffee', 'nescafe',"americano"];
 if (
   milkEligibleIds.includes(unit.id) &&
   unit.milkOptions &&
@@ -3308,7 +3311,7 @@ if (
 
           // Sütlü kahveler
 // Sütlü kahveler (çay ve espresso hariç)
-const milkEligibleIds = ['cappuccino', 'latte', 'filter-coffee', 'nescafe'];
+const milkEligibleIds = ['cappuccino', 'latte', 'filter-coffee', 'nescafe',"americano"];
 if (
   milkEligibleIds.includes(unit.id) &&
   unit.milkOptions &&
